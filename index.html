@@ -756,7 +756,8 @@ function ccEnsureIds(opts={}){
       const sid=ccRowSubId(r)||ccHashId('sub_',gid+'|'+ccNorm(r.subcategoria));
       r.subcategoria_id=sid; if('sub_id' in r) delete r.sub_id; if('cc_id' in r) delete r.cc_id;
     } else { if('subcategoria_id' in r && !r.subcategoria) delete r.subcategoria_id; }
-    const now=JSON.stringify([r.grupo_id,r.categoria_id,r.group_id,r.subcategoria_id,r.sub_id,r.cc_id,r.grupo]);
+    if(!r.dre_id) r.dre_id=dreInferClass(r.categoria);
+    const now=JSON.stringify([r.grupo_id,r.categoria_id,r.group_id,r.subcategoria_id,r.sub_id,r.cc_id,r.grupo,r.dre_id]);
     if(old!==now)changedCC.push(r);
   });
   const findGroupByName=(cat)=>{const k=ccNorm(cat);const gid=gidByCat[k];return gid?{id:gid,nome:(store.centrocusto.find(x=>ccRowGroupId(x)===gid)?.categoria)||cat}:null;};
@@ -1487,28 +1488,56 @@ const DRE_STRUCT=[
   {id:'resultado', lbl:'= Resultado Líquido',        tipo:'tot', deps:['res_op'], hi:true},
 ];
 
+const DRE_CLASS=[
+  {id:'rec_bruta',lbl:'Receita Bruta'},
+  {id:'ded',lbl:'Deduções da Receita'},
+  {id:'custos',lbl:'Custo dos Produtos'},
+  {id:'desp_op',lbl:'Despesas Operacionais'},
+  {id:'desp_pes',lbl:'Despesas com Pessoal'},
+  {id:'outras',lbl:'Outras Despesas'},
+  {id:'depreciacao',lbl:'Depreciação'},
+  {id:'fora',lbl:'Fora do DRE'}
+];
+function dreClassLabel(id){return (DRE_CLASS.find(x=>x.id===id)||{}).lbl||'Sem classificação';}
+function dreInferClass(cat){
+  const n=ccNorm(cat);
+  if(['receita com produtos e mercadorias','outras receitas operacionais','vendas','a receber'].includes(n)) return 'rec_bruta';
+  if(['impostos sobre a receita','outras deducoes','taxas de cartao','taxas ifood','taxas i food','taxas'].includes(n)) return 'ded';
+  if(n==='custo dos produtos') return 'custos';
+  if(n==='despesas com pessoal') return 'desp_pes';
+  if(n==='outras despesas operacionais') return 'outras';
+  if(n==='depreciacao') return 'depreciacao';
+  if(['transferencia entre contas','transferências entre contas','aporte dos socios','aporte dos sócios','distribuicao de lucros','distribuição de lucros','aquisicao de bens','aquisição de bens'].includes(n)) return 'fora';
+  if(n==='despesas operacionais') return 'desp_op';
+  return 'desp_op';
+}
+function dreClassForPlanRow(r){return r?.dre_id||r?.dre_classificacao||dreInferClass(r?.categoria||'');}
+function dreClassForGroup(g){
+  const rows=ccRows(g?.id||g?.nome||g)||[];
+  const explicit=rows.find(r=>r.dre_id||r.dre_classificacao);
+  return explicit?(explicit.dre_id||explicit.dre_classificacao):dreInferClass(g?.nome||g||'');
+}
+function dreClassForLanc(r){
+  if(r?.dre_id||r?.dre_classificacao) return r.dre_id||r.dre_classificacao;
+  const g=ccGroupByAny(r?.categoria_id||r?.categoria);
+  if(g) return dreClassForGroup(g);
+  return dreInferClass(r?.categoria||'');
+}
+function dreLancMatchesPlan(l,row){
+  const gid=ccRowGroupId(row), sid=ccRowSubId(row);
+  const gm=gid?((l.categoria_id&&l.categoria_id===gid)||ccNorm(l.categoria)===ccNorm(row.categoria)):ccNorm(l.categoria)===ccNorm(row.categoria);
+  if(!gm) return false;
+  if(row.subcategoria&&sid) return (l.subcategoria_id&&l.subcategoria_id===sid)||ccNorm(l.subcategoria)===ccNorm(row.subcategoria);
+  if(row.subcategoria) return ccNorm(l.subcategoria)===ccNorm(row.subcategoria);
+  return true;
+}
+
 function calcDRE(lancs){
-  const catS={};
-  lancs.forEach(r=>{
-    const k=r.categoria||'';
-    const isIn=r.rec_desp==='Contas a receber';
-    if(isIn) catS[k]=(catS[k]||0)+r.valor;
-    else     catS[k]=(catS[k]||0)+r.valor;
-  });
   const vals={};
   DRE_STRUCT.forEach(row=>{
     if(row.tipo==='g'){
-      const v=row.cats.reduce((s,c)=>{
-        const lancsC=lancs.filter(r=>r.categoria===c);
-        const isRec=row.sinal===1;
-        const sum=lancsC.reduce((ss,r)=>ss+r.valor,0);
-        return s+sum*Math.abs(row.sinal);
-      },0)*Math.sign(row.sinal);
-      // recompute correctly
-      vals[row.id]=row.cats.reduce((s,c)=>{
-        const sum=lancs.filter(r=>r.categoria===c).reduce((ss,r)=>ss+r.valor,0);
-        return s+sum;
-      },0)*row.sinal;
+      const sum=lancs.filter(r=>dreClassForLanc(r)===row.id).reduce((ss,r)=>ss+(+r.valor||0),0);
+      vals[row.id]=sum*row.sinal;
     } else {
       vals[row.id]=row.deps.reduce((s,d)=>s+(vals[d]||0),0);
     }
@@ -1560,15 +1589,13 @@ function rDRE(){
       if(row.tipo==='g'){
         const cls=row.hi?'dre-hi':'dre-cat';
         h+=`<tr class="${cls}"><td>${row.lbl}</td>${mCols}<td class="dv ${valCls(va)}">${fmtN(va)}</td><td class="dv dc">${pct.toFixed(1)}%</td></tr>`;
-        row.cats.forEach(cat=>{
-          const subCats=[...new Set(store.centrocusto.filter(c=>c.categoria===cat&&c.subcategoria).map(c=>c.subcategoria))];
-          subCats.forEach(sc=>{
-            const tots=store.lancamentos.filter(r=>(r.data_competencia||'').startsWith(fAno+'-')&&r.categoria===cat&&r.subcategoria===sc).reduce((s,r)=>s+r.valor,0);
-            if(tots>0){
-              const sCols=mesesDisp.map(m=>{const v=store.lancamentos.filter(r=>(r.data_competencia||'').startsWith(fAno+'-'+m)&&r.categoria===cat&&r.subcategoria===sc).reduce((s,r)=>s+r.valor,0);return`<td class="dv dc">${v?fmtN(v):'—'}</td>`;}).join('');
-              h+=`<tr class="dre-sub"><td>└ ${sc}</td>${sCols}<td class="dv dc">${fmtN(tots)}</td><td></td></tr>`;
-            }
-          });
+        const planRows=(store.centrocusto||[]).filter(c=>c.subcategoria&&dreClassForPlanRow(c)===row.id);
+        planRows.forEach(pr=>{
+          const tots=store.lancamentos.filter(l=>(l.data_competencia||'').startsWith(fAno+'-')&&dreLancMatchesPlan(l,pr)).reduce((s,l)=>s+(+l.valor||0),0);
+          if(tots>0){
+            const sCols=mesesDisp.map(m=>{const v=store.lancamentos.filter(l=>(l.data_competencia||'').startsWith(fAno+'-'+m)&&dreLancMatchesPlan(l,pr)).reduce((s,l)=>s+(+l.valor||0),0);return`<td class="dv dc">${v?fmtN(v):'—'}</td>`;}).join('');
+            h+=`<tr class="dre-sub"><td>└ ${ccSafe(pr.categoria)} › ${ccSafe(pr.subcategoria)}</td>${sCols}<td class="dv dc">${fmtN(tots)}</td><td></td></tr>`;
+          }
         });
       } else {
         const cls=row.hi?'dre-hi':'dre-tot';
@@ -1599,7 +1626,7 @@ function rDRE(){
     <div class="tb" style="margin-bottom:12px">
       <span style="font-size:13px;font-weight:600;color:var(--tx2)">Ano:</span>
       <select id="dre-ano" class="fc" onchange="rDRE()">${anos.map(a=>`<option value="${a}" ${a===fAno?'selected':''}>${a}</option>`).join('')}</select>
-      <span style="font-size:11px;color:var(--tx3);margin-left:6px">Regime de Competência · ${mesesDisp.length} meses · transferências entre contas ficam fora da Receita Bruta</span>
+      <span style="font-size:11px;color:var(--tx3);margin-left:6px">Regime de Competência · ${mesesDisp.length} meses · DRE segue a classificação do Plano de Contas</span>
     </div>
     <div style="overflow-x:auto"><div class="tw">
       <table class="dre-t">
@@ -1913,6 +1940,16 @@ function ccAgendaCount(cat,sub=''){
   }).length;
 }
 function ccSafe(v){return agEsc(v||'');}
+function ccSortStore(){
+  store.centrocusto=(store.centrocusto||[]).sort((a,b)=>{
+    const c=(a.categoria||'').localeCompare((b.categoria||''),'pt-BR',{sensitivity:'base'});
+    if(c)return c;
+    const sa=(a.subcategoria||'').trim(), sb=(b.subcategoria||'').trim();
+    if(!sa&&sb)return -1;
+    if(sa&&!sb)return 1;
+    return sa.localeCompare(sb,'pt-BR',{sensitivity:'base'});
+  });
+}
 async function ccPersistRefs(changedLanc,changedAgenda){
   try{
     const jobs=[];
@@ -1938,7 +1975,7 @@ async function ccRenameRefs(oldCat,newCat,oldSub=null,newSub=null,ids={}){
   await ccPersistRefs(changedLanc,changedAgenda);
 }
 function rCC(){
-  ccEnsureIds(); store.centrocusto=store.centrocusto||[];
+  ccEnsureIds(); store.centrocusto=store.centrocusto||[]; ccSortStore();
   const sw=($('sw-cc')||{value:''}).value.toLowerCase().trim();
   let groups=ccGroups();
   if(sw) groups=groups.filter(g=>`${g.nome} ${ccSubsByAny(g.id).map(x=>x.subcategoria).join(' ')}`.toLowerCase().includes(sw));
@@ -1951,8 +1988,8 @@ function rCC(){
   const groupCards=groups.map(g=>{
     const n=ccSubsByAny(g.id).length;
     const lanc=ccLancCount(g.id);
-    return `<div class="cc-group-card ${g.id===ccSel?'act':''}" onclick='selCC(${JSON.stringify(g.id)})'>
-      <div style="min-width:0"><div class="cc-group-name">${ccSafe(g.nome)}</div><div class="cc-group-meta">${n} subcategoria(s) · ${lanc} lançamento(s)</div></div>
+    return `<div class="cc-group-card ${g.id===ccSel?'act':''}" onclick='selCC(${JSON.stringify(g.id)},event)'>
+      <div style="min-width:0"><div class="cc-group-name">${ccSafe(g.nome)}</div><div class="cc-group-meta">${n} subcategoria(s) · ${lanc} lançamento(s) · DRE: ${ccSafe(dreClassLabel(dreClassForGroup(g)))}</div></div>
       <div class="cc-count">${n}</div>
     </div>`;
   }).join('');
@@ -1978,7 +2015,7 @@ function rCC(){
     <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-bottom:12px">
       <div class="kpi" style="--kc:var(--acc)"><div class="kpi-l">Grupos</div><div class="kpi-v">${groups.length}</div><div class="kpi-s">categorias principais com ID fixo</div></div>
       <div class="kpi" style="--kc:var(--in)"><div class="kpi-l">Subcategorias</div><div class="kpi-v" style="color:var(--in)">${totalSubs}</div><div class="kpi-s">cada uma com ID interno estável</div></div>
-      <div class="kpi" style="--kc:var(--ok)"><div class="kpi-l">Grupo selecionado</div><div class="kpi-v" style="font-size:14px!important;color:var(--ok);font-family:'DM Sans',sans-serif!important;font-weight:750!important">${selected?ccSafe(selected):'—'}</div><div class="kpi-s">${subs.length} subcategoria(s)</div></div>
+      <div class="kpi" style="--kc:var(--ok)"><div class="kpi-l">Grupo selecionado</div><div class="kpi-v" style="font-size:14px!important;color:var(--ok);font-family:'DM Sans',sans-serif!important;font-weight:750!important">${selected?ccSafe(selected):'—'}</div><div class="kpi-s">${subs.length} subcategoria(s) · DRE: ${selectedGroup?ccSafe(dreClassLabel(dreClassForGroup(selectedGroup))):'—'}</div></div>
     </div>
     <div class="cc-layout">
       <div class="cc-panel">
@@ -1990,7 +2027,7 @@ function rCC(){
       </div>
       <div class="cc-panel">
         <div class="cc-panel-head">
-          <div><div class="cc-panel-title">${selected?ccSafe(selected):'Selecione um grupo'}</div><div class="cc-panel-sub">Subcategorias vinculadas ao grupo selecionado</div></div>
+          <div><div class="cc-panel-title">${selected?ccSafe(selected):'Selecione um grupo'}</div><div class="cc-panel-sub">Subcategorias vinculadas · DRE: ${selectedGroup?ccSafe(dreClassLabel(dreClassForGroup(selectedGroup))):'—'}</div></div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
             ${selectedGroup?`<button class="btn bs btn-s" onclick='eCCGroup(${JSON.stringify(selectedGroup.id)})'>✏️ Editar grupo</button><button class="btn bd2 btn-s" onclick='dCCGroup(${JSON.stringify(selectedGroup.id)})'>🗑️ Excluir grupo</button>`:''}
           </div>
@@ -2000,10 +2037,24 @@ function rCC(){
       </div>
     </div>`;
 }
-window.selCC=id=>{ccSel=id;rCC();};
+window.selCC=(id,ev)=>{
+  if(ev){ev.preventDefault();ev.stopPropagation();}
+  const box=document.querySelector('.cc-groups');
+  const st=box?box.scrollTop:0;
+  ccSel=id;
+  rCC();
+  setTimeout(()=>{const b=document.querySelector('.cc-groups'); if(b)b.scrollTop=st;},0);
+};
 window.pgCC=p=>{CP=p;rCC();};
 window.ccValidarIds=()=>{const res=ccEnsureIds({persist:true});toast(`IDs validados: ${res.changedCC} plano · ${res.changedLanc} lanç. · ${res.changedAgenda} agenda`,'ok');rCC();};
-function ccGroupForm(idOrNome=''){const g=ccGroupByAny(idOrNome);const nome=g?.nome||idOrNome||'';return `<div class="fg"><div class="fgi full"><label class="fl">Nome do grupo <span class="rq">*</span></label><input id="cc-cat" type="text" class="fv" value="${ccSafe(nome)}" placeholder="Ex.: Despesas Operacionais"><div style="font-size:10px;color:var(--tx3);margin-top:5px">O ID interno fica oculto e não muda quando o nome é editado.</div></div></div>`;}
+function ccGroupForm(idOrNome=''){
+  const g=ccGroupByAny(idOrNome);const nome=g?.nome||idOrNome||'';const dreAtual=g?dreClassForGroup(g):dreInferClass(nome);
+  const opts=DRE_CLASS.map(o=>`<option value="${o.id}" ${o.id===dreAtual?'selected':''}>${ccSafe(o.lbl)}</option>`).join('');
+  return `<div class="fg">
+    <div class="fgi full"><label class="fl">Nome do grupo <span class="rq">*</span></label><input id="cc-cat" type="text" class="fv" value="${ccSafe(nome)}" placeholder="Ex.: Despesas Operacionais"><div style="font-size:10px;color:var(--tx3);margin-top:5px">O ID interno fica oculto e não muda quando o nome é editado.</div></div>
+    <div class="fgi full"><label class="fl">Onde este grupo entra no DRE? <span class="rq">*</span></label><select id="cc-dre" class="fv">${opts}</select><div style="font-size:10px;color:var(--tx3);margin-top:5px">Essa classificação define automaticamente se os lançamentos do grupo entram como receita, dedução, custo, despesa ou ficam fora do DRE.</div></div>
+  </div>`;
+}
 function ccSubForm(r={},cat=''){
   const currentGroup=ccGroupByAny(r.grupo_id||r.categoria_id||r.categoria||cat);
   return `<div class="fg">
@@ -2016,29 +2067,38 @@ window.nCCGroup=()=>oM('Novo grupo',ccGroupForm(),`<button class="btn bs" onclic
 window.eCCGroup=id=>oM('Editar grupo',ccGroupForm(id),`<button class="btn bs" onclick="cM()">Cancelar</button><button class="btn bp" onclick='svCCGroup(${JSON.stringify(id)})'>💾 Atualizar</button>`);
 window.svCCGroup=async function(oldId){
   const nome=$('cc-cat').value.trim();
+  const dreId=($('cc-dre')||{}).value||dreInferClass(nome);
   if(!nome){toast('Nome do grupo obrigatório','er');return;}
   const oldGroup=oldId?ccGroupByAny(oldId):null;
   if(!oldGroup){
     if(ccGroups().some(g=>ccNorm(g.nome)===ccNorm(nome))){toast('Esse grupo já existe','er');return;}
     const gid=ccNewId('grp_');
-    const nid=await fbAdd('centrocusto',{grupo_id:gid,categoria_id:gid,categoria:nome,subcategoria:'',status:'Ativo/Exibido'})||uid();
-    store.centrocusto.push({id:nid,grupo_id:gid,categoria_id:gid,categoria:nome,subcategoria:'',status:'Ativo/Exibido'});
-    ccSel=gid;lsSave();toast('Grupo criado com ID interno fixo!','ok');cM();rCC();return;
+    const nid=ccNewId('cc_');
+    const row={id:nid,grupo_id:gid,categoria_id:gid,categoria:nome,subcategoria:'',status:'Ativo/Exibido',dre_id:dreId,grupo:''};
+    store.centrocusto.push(row); ccSortStore(); ccSel=gid; lsSave(); cM(); rCC(); toast('Grupo criado e classificado no DRE!','ok');
+    try{await fbSet('centrocusto',nid,{...row});}catch(e){console.warn('Falha ao salvar grupo no Firebase:',e);toast('Salvo localmente. Verifique conexão para sincronizar.','in');}
+    return;
   }
   if(nome!==oldGroup.nome && ccGroups().some(g=>g.id!==oldGroup.id&&ccNorm(g.nome)===ccNorm(nome))){toast('Já existe outro grupo com esse nome','er');return;}
   const rows=ccRows(oldGroup.id); const oldCat=oldGroup.nome;
-  rows.forEach(r=>{r.categoria=nome;r.grupo_id=oldGroup.id;r.categoria_id=oldGroup.id;});
-  try{for(const r of rows){if(r.id)await fbSet('centrocusto',r.id,{...r});}}catch(e){console.warn(e)}
+  rows.forEach(r=>{r.categoria=nome;r.grupo_id=oldGroup.id;r.categoria_id=oldGroup.id;r.dre_id=dreId;});
+  ccSortStore(); lsSave();
+  try{for(const r of rows){if(r.id)await fbSet('centrocusto',r.id,{...r});}}catch(e){console.warn(e);toast('Alteração salva localmente. Falha ao sincronizar agora.','in');}
   if(nome!==oldCat) await ccRenameRefs(oldCat,nome,null,null,{groupId:oldGroup.id});
-  ccSel=oldGroup.id;lsSave();toast('Grupo atualizado sem quebrar IDs!','ok');cM();rCC();
+  ccSel=oldGroup.id;toast('Grupo atualizado sem quebrar IDs!','ok');cM();rCC();
 };
 window.dCCGroup=async function(id){
   const g=ccGroupByAny(id); if(!g)return; const rows=ccRows(g.id), lanc=ccLancCount(g.id), ag=ccAgendaCount(g.id);
   confirm_('Excluir grupo',`Excluir o grupo "${g.nome}" e suas ${ccSubs(g.id).length} subcategoria(s) do plano de contas? Os ${lanc} lançamento(s) e ${ag} item(ns) da agenda continuam salvos, mas sem esse grupo cadastrado nas opções.`,async()=>{
-    const ids=new Set(rows.map(x=>x.id).filter(Boolean));
-    store.centrocusto=store.centrocusto.filter(x=>!ids.has(x.id));
-    try{for(const r of rows){if(r.id)await fbDel('centrocusto',r.id);}}catch(e){console.warn(e)}
-    ccSel='';lsSave();toast('Grupo removido do plano de contas','ok');rCC();
+    const rowIds=new Set(rows.map(x=>x.id).filter(Boolean));
+    store.centrocusto=store.centrocusto.filter(x=>{
+      const sameId=x.id&&rowIds.has(x.id);
+      const sameGroup=ccRowGroupId(x)===g.id || x.categoria_id===g.id || ccNorm(x.categoria)===ccNorm(g.nome);
+      return !(sameId||sameGroup);
+    });
+    ccSortStore();
+    try{for(const r of rows){if(r.id)await fbDel('centrocusto',r.id);}}catch(e){console.warn('Falha ao excluir grupo no Firebase:',e);toast('Excluído localmente. Verifique conexão para sincronizar.','in');}
+    ccSel=ccGroups()[0]?.id||'';lsSave();toast('Grupo removido do plano de contas','ok');rCC();
   });
 };
 window.nCCSub=cat=>oM('Nova subcategoria',ccSubForm({},cat||ccSel),`<button class="btn bs" onclick="cM()">Cancelar</button><button class="btn bp" onclick="svCC(null)">💾 Salvar</button>`);
@@ -2049,25 +2109,40 @@ window.svCC=async function(idx){
   if(!g||!subNome){toast('Grupo e subcategoria são obrigatórios','er');return;}
   const duplicado=(store.centrocusto||[]).some((x,i)=>i!==idx&&ccRowGroupId(x)===g.id&&ccNorm(x.subcategoria)===ccNorm(subNome));
   if(duplicado){toast('Essa subcategoria já existe nesse grupo','er');return;}
+  const dreId=dreClassForGroup(g);
   if(idx!==null&&idx!==undefined){
     const item=store.centrocusto[idx];
     const oldCat=item.categoria, oldSub=item.subcategoria||'', oldGroupId=ccRowGroupId(item)||g.id, oldSubId=ccRowSubId(item)||ccHashId('sub_',g.id+'|'+ccNorm(oldSub));
-    store.centrocusto[idx]={...item,grupo_id:g.id,categoria_id:g.id,categoria:g.nome,subcategoria_id:oldSubId,subcategoria:subNome,status,grupo:''};
-    if(item.id) await fbSet('centrocusto',item.id,{...store.centrocusto[idx]});
+    store.centrocusto[idx]={...item,grupo_id:g.id,categoria_id:g.id,categoria:g.nome,subcategoria_id:oldSubId,subcategoria:subNome,status,grupo:'',dre_id:dreId};
+    ccSortStore(); lsSave();
+    try{if(item.id){const savedRow=store.centrocusto.find(x=>ccRowSubId(x)===oldSubId)||store.centrocusto[idx];await fbSet('centrocusto',item.id,{...savedRow});}}catch(e){console.warn('Falha ao salvar subcategoria:',e);toast('Salvo localmente. Verifique conexão para sincronizar.','in');}
     if(oldCat!==g.nome || oldSub!==subNome || oldGroupId!==g.id) await ccRenameRefs(oldCat,g.nome,oldSub,subNome,{groupId:oldGroupId||g.id,subId:oldSubId});
   }else{
     const sid=ccNewId('sub_');
-    const nid=await fbAdd('centrocusto',{grupo_id:g.id,categoria_id:g.id,categoria:g.nome,subcategoria_id:sid,subcategoria:subNome,status,grupo:''})||uid();
-    store.centrocusto.push({id:nid,grupo_id:g.id,categoria_id:g.id,categoria:g.nome,subcategoria_id:sid,subcategoria:subNome,status,grupo:''});
+    const nid=ccNewId('cc_');
+    const row={id:nid,grupo_id:g.id,categoria_id:g.id,categoria:g.nome,subcategoria_id:sid,subcategoria:subNome,status,grupo:'',dre_id:dreId};
+    store.centrocusto.push(row); ccSortStore(); lsSave();
+    try{await fbSet('centrocusto',nid,{...row});}catch(e){console.warn('Falha ao salvar subcategoria no Firebase:',e);toast('Salvo localmente. Verifique conexão para sincronizar.','in');}
   }
-  ccSel=g.id;lsSave();toast('Salvo com ID interno fixo!','ok');cM();rCC();
+  ccSel=g.id;toast('Salvo com ID interno fixo!','ok');cM();rCC();
 };
 window.dCC=async function(idx){
   const r=store.centrocusto[idx];
   if(!r)return;
   const lanc=ccLancCount(r.grupo_id||r.categoria,r.subcategoria_id||r.subcategoria), ag=ccAgendaCount(r.grupo_id||r.categoria,r.subcategoria_id||r.subcategoria);
   confirm_('Excluir subcategoria',`Excluir "${r.subcategoria}" do grupo "${r.categoria}"? Os ${lanc} lançamento(s) e ${ag} item(ns) da agenda continuam salvos, mas essa opção sai do plano de contas.`,async()=>{
-    const item=store.centrocusto[idx];store.centrocusto.splice(idx,1);if(item&&item.id)await fbDel('centrocusto',item.id);lsSave();toast('Subcategoria excluída','ok');rCC();
+    const item=store.centrocusto[idx];
+    const itemId=item?.id||''; const itemG=ccRowGroupId(item)||item?.categoria_id||''; const itemS=ccRowSubId(item)||item?.subcategoria_id||'';
+    store.centrocusto=store.centrocusto.filter(x=>{
+      if(itemId && x.id===itemId)return false;
+      if(x===item)return false;
+      const sameGroup=itemG && (ccRowGroupId(x)===itemG || x.categoria_id===itemG);
+      const sameSub=itemS ? ccRowSubId(x)===itemS : (sameGroup && ccNorm(x.subcategoria)===ccNorm(item.subcategoria));
+      return !(sameGroup&&sameSub);
+    });
+    ccSortStore();
+    try{if(item&&item.id)await fbDel('centrocusto',item.id);}catch(e){console.warn('Falha ao excluir subcategoria no Firebase:',e);toast('Excluída localmente. Verifique conexão para sincronizar.','in');}
+    lsSave();toast('Subcategoria excluída','ok');rCC();
   });
 };
 // ══════════════════════════════════════════════
