@@ -95,6 +95,11 @@ html,body{height:100%;background:var(--bg);color:var(--tx);font-family:'DM Sans'
 .m-tab.act{background:var(--acc3);color:var(--acc);border-color:rgba(249,115,22,.3)}
 .m-tab.all{background:var(--s2);color:var(--tx2)}
 .m-tab.all.act{background:var(--acc3);color:var(--acc)}
+.yr-pill{padding:7px 13px;border-radius:13px;cursor:pointer;font-size:12px;font-weight:800;color:var(--tx);background:linear-gradient(135deg,var(--s2),rgba(249,115,22,.08));border:1px solid var(--bd);box-shadow:0 6px 18px rgba(0,0,0,.10);margin-right:5px;white-space:nowrap}
+.yr-pill:hover{border-color:rgba(249,115,22,.35);color:var(--acc)}
+.yr-pill.act{background:var(--acc3);color:var(--acc);border-color:rgba(249,115,22,.45)}
+.yr-pill .mini{font-size:10px;font-weight:600;color:var(--tx2);margin-left:4px}
+.yr-pill.act .mini{color:var(--acc)}
 
 /* CONTENT */
 #content{flex:1;overflow-y:auto;padding:16px 18px}
@@ -798,6 +803,69 @@ function ccSubsByAny(group){const g=ccGroupByAny(group);if(!g)return[];return g.
 function ccSubByAny(group,subOrId){const val=String(subOrId||'');const subs=ccSubsByAny(group);return subs.find(s=>ccRowSubId(s)===val)||subs.find(s=>ccNorm(s.subcategoria)===ccNorm(val))||null;}
 function ccLabelFromIds(catId,subId){const g=ccGroupByAny(catId);const s=g?ccSubByAny(g.id,subId):null;return{categoria:g?.nome||'',subcategoria:s?.subcategoria||'',categoria_id:g?.id||catId||'',subcategoria_id:ccRowSubId(s)||subId||''};}
 
+
+// ── Blindagem automática dos dados recuperados ──────────────
+function lancPairNoPlano(r){
+  if(!r||!r.categoria||!r.subcategoria)return false;
+  const gid=r.categoria_id||ccRowGroupId(ccGroupByAny(r.categoria));
+  const sid=r.subcategoria_id;
+  return (store.centrocusto||[]).some(c=>{
+    const gOk=gid?ccRowGroupId(c)===gid:ccNorm(c.categoria)===ccNorm(r.categoria);
+    const sOk=sid?ccRowSubId(c)===sid:ccNorm(c.subcategoria)===ccNorm(r.subcategoria);
+    return gOk&&sOk;
+  }) || (store.centrocusto||[]).some(c=>ccNorm(c.categoria)===ccNorm(r.categoria)&&ccNorm(c.subcategoria)===ccNorm(r.subcategoria));
+}
+function ensureObraPlano(){
+  store.centrocusto=store.centrocusto||[];
+  let row=store.centrocusto.find(c=>ccNorm(c.categoria)==='obra'&&ccNorm(c.subcategoria)==='obra');
+  if(row) return {row,created:false};
+  const gid=ccHashId('grp_','obra');
+  const sid=ccHashId('sub_',gid+'|obra');
+  row={id:ccHashId('cc_','obra|obra'),categoria:'Obra',subcategoria:'Obra',status:'Ativo',grupo_id:gid,categoria_id:gid,subcategoria_id:sid,dre_id:'fora'};
+  store.centrocusto.push(row);
+  return {row,created:true};
+}
+function textoIndicaObra(r){
+  const campos=[r?.categoria,r?.subcategoria,r?.centro_custo,r?.descricao].map(x=>ccNorm(x));
+  return campos.some(x=>x==='obra'||x.includes(' obra')||x.includes('obra ')||x.includes('material obra'));
+}
+async function aplicarBlindagemDados(opts={}){
+  const persist=!!opts.persist;
+  store.lancamentos=store.lancamentos||[];
+  const changedLanc=[];
+  const precisaObra=(store.lancamentos||[]).some(r=>textoIndicaObra(r)&&(ccNorm(r.categoria)==='obra'||ccNorm(r.subcategoria)==='obra'||!lancPairNoPlano(r)));
+  const obra=precisaObra?ensureObraPlano():null;
+  const obraRow=obra?.row||null;
+  const obraCreated=!!obra?.created;
+  const gid=obraRow?ccRowGroupId(obraRow):'';
+  const sid=obraRow?ccRowSubId(obraRow):'';
+  store.lancamentos.forEach(r=>{
+    let changed=false;
+    if((!String(r.descricao||'').trim()) && String(r.subcategoria||'').trim()){
+      r.descricao=String(r.subcategoria).trim(); changed=true;
+    }
+    const foraPlano=r.categoria&&r.subcategoria&&!lancPairNoPlano(r);
+    const obraComoCategoria=ccNorm(r.categoria)==='obra'||ccNorm(r.subcategoria)==='obra';
+    if(obraRow && textoIndicaObra(r) && (obraComoCategoria||foraPlano||!r.categoria||!r.subcategoria)){
+      if(r.categoria!=='Obra'){r.categoria='Obra'; changed=true;}
+      if(r.subcategoria!=='Obra'){r.subcategoria='Obra'; changed=true;}
+      if(r.categoria_id!==gid){r.categoria_id=gid; changed=true;}
+      if(r.subcategoria_id!==sid){r.subcategoria_id=sid; changed=true;}
+    }
+    if(changed)changedLanc.push(r);
+  });
+  ccEnsureIds({persist:false});
+  lsSave?.();
+  if(persist&&fbOk){
+    try{
+      if(obraCreated&&obraRow) await fbSet('centrocusto',obraRow.id,{...obraRow});
+      for(let i=0;i<changedLanc.length;i+=80){await Promise.all(changedLanc.slice(i,i+80).filter(r=>r.id).map(r=>fbSet('lancamentos',r.id,{...r})));}
+      if(changedLanc.length||obraCreated) console.log('Blindagem de dados aplicada:',{lancamentos:changedLanc.length,obraPlano:obraCreated});
+    }catch(e){console.warn('Falha ao persistir blindagem de dados:',e.message);}
+  }
+  return {changedLanc:changedLanc.length,obraCreated};
+}
+
 // ════════════════════════════════════════════════════════
 // FIREBASE — configuração e operações de dados
 // ════════════════════════════════════════════════════════
@@ -874,10 +942,11 @@ function lsLoad(){
     const d = JSON.parse(localStorage.getItem(LS_KEY)||'null');
     if(d && d.lancamentos && d.lancamentos.length){
       Object.assign(store, {
-        lancamentos:(d.lancamentos||[]).filter(r=>!r.deleted), centrocusto:d.centrocusto||store.centrocusto,
+        lancamentos:d.lancamentos, centrocusto:d.centrocusto||store.centrocusto,
         patrimonio:d.patrimonio||[], agenda:d.agenda||[], clientes_mes:d.clientes_mes||{}, cfg:d.cfg||store.cfg
       });
       ccEnsureIds();
+      aplicarBlindagemDados({persist:false});
       return true;
     }
   } catch(e){}
@@ -890,53 +959,10 @@ function setStatus(txt, color){
   if(el){el.textContent=txt;el.style.color=color;}
 }
 
-// ── Carregamento econômico + tempo real automático ───────────────
-const LS_LANC_SYNC_KEY = 'bdr_lancamentos_sync_ms_v2';
-const DELTA_SYNC_SAFETY_MS = 10 * 60 * 1000;
-function getLancSyncMs(){try{return +(localStorage.getItem(LS_LANC_SYNC_KEY)||0)||0;}catch(e){return 0;}}
-function setLancSyncMs(ms){try{localStorage.setItem(LS_LANC_SYNC_KEY,String(Math.max(0,Math.floor(ms||0))));}catch(e){}}
-function tsToMs(v){
-  if(!v) return 0;
-  if(typeof v.toMillis==='function') return v.toMillis();
-  if(typeof v.seconds==='number') return v.seconds*1000 + Math.floor((v.nanoseconds||0)/1000000);
-  if(typeof v._seconds==='number') return v._seconds*1000 + Math.floor((v._nanoseconds||0)/1000000);
-  if(typeof v==='number') return v;
-  const p=Date.parse(v); return Number.isFinite(p)?p:0;
-}
-function cleanDoc(doc){return {id:doc.id,...doc.data()};}
-function upsertById(arr,item){const i=arr.findIndex(x=>x.id===item.id); if(i>=0) arr[i]={...arr[i],...item}; else arr.unshift(item);}
-function pushOrUpdateById(arr,item){const i=arr.findIndex(x=>x.id===item.id); if(i>=0) arr[i]={...arr[i],...item}; else arr.push(item);}
-function removeById(arr,id){return (arr||[]).filter(x=>x.id!==id);}
-function touchLancSyncFromChanges(changes){
-  let max=getLancSyncMs();
-  changes.forEach(ch=>{const d=ch.doc&&ch.doc.data?ch.doc.data():{}; const ms=tsToMs(d.updated_at)||tsToMs(d.deleted_at); if(ms>max) max=ms;});
-  // Avança o marcador com janela de segurança para não reler a base inteira, sem perder alterações recentes.
-  const safeNow=Date.now()-2000;
-  setLancSyncMs(Math.max(max,safeNow));
-}
-function lancamentosDeltaQuery(){
-  const ms=getLancSyncMs();
-  if(ms>0){
-    const from=firebase.firestore.Timestamp.fromMillis(Math.max(0,ms-DELTA_SYNC_SAFETY_MS));
-    return db.collection('lancamentos').where('updated_at','>=',from).orderBy('updated_at','desc');
-  }
-  return db.collection('lancamentos').orderBy('data_competencia','desc');
-}
-
+// ── Carregar tudo do Firestore ────────────────────────
 async function loadAll(){
   setStatus('● Conectando…','var(--wa)');
-  const tinhaCache=lsLoad();
-  const temMarcador=getLancSyncMs()>0;
   try {
-    // Se este computador já tem cache + marcador, não relê os 2.284 lançamentos.
-    // Ele abre pelo cache e fica ouvindo apenas alterações novas/alteradas.
-    if(tinhaCache && temMarcador){
-      setStatus('● '+store.lancamentos.length+' lanç. | online econômico','var(--ok)');
-      setupRealtimeSync();
-      return true;
-    }
-
-    // Primeiro acesso deste computador, ou cache antigo sem marcador: faz uma carga completa uma única vez.
     const [lSnap,ccSnap,patSnap,cfgSnap,cmSnap] = await Promise.all([
       db.collection('lancamentos').orderBy('data_competencia','desc').get(),
       db.collection('centrocusto').get(),
@@ -947,74 +973,88 @@ async function loadAll(){
     let agSnap = null;
     try { agSnap = await db.collection('agenda_financeira').get(); }
     catch(e){ console.warn('Agenda ainda não disponível no Firebase:', e.message); }
-    store.lancamentos  = lSnap.docs.map(cleanDoc).filter(d=>!d.deleted);
-    store.centrocusto  = ccSnap.docs.map(cleanDoc);
-    store.patrimonio   = patSnap.docs.map(cleanDoc);
-    store.agenda       = agSnap ? agSnap.docs.map(cleanDoc) : (store.agenda||[]);
+    store.lancamentos  = lSnap.docs.map(d=>({id:d.id,...d.data()}));
+    store.centrocusto  = ccSnap.docs.map(d=>({id:d.id,...d.data()}));
+    store.patrimonio   = patSnap.docs.map(d=>({id:d.id,...d.data()}));
+    store.agenda       = agSnap ? agSnap.docs.map(d=>({id:d.id,...d.data()})) : (store.agenda||[]);
     store.clientes_mes = {};
     cmSnap.docs.forEach(d=>{ store.clientes_mes[d.id]=d.data().count||0; });
     if(cfgSnap.docs.length) store.cfg = {...store.cfg,...cfgSnap.docs[0].data()};
     ccEnsureIds({persist:false});
-    setLancSyncMs(Date.now());
+    await aplicarBlindagemDados({persist:true});
     lsSave();
     setStatus('● '+store.lancamentos.length+' lanç. | online','var(--ok)');
     setupRealtimeSync();
     return true;
   } catch(e){
-    console.warn('Falha ao carregar Firestore:', e.message);
-    if(tinhaCache){
-      setStatus('● '+store.lancamentos.length+' lanç. | cache local','var(--wa)');
-      try{ setupRealtimeSync(); }catch(_e){}
-      toast('Firebase indisponível — abrindo cache local','in');
-      return true;
-    }
     setStatus('● offline','var(--er)');
-    toast('Firebase offline/sem quota — sem cache local neste computador','er');
+    toast('Firebase offline — usando dados locais','in');
     return false;
   }
 }
 
-// ── Sync em tempo real econômico (multi-usuário) ──────
+// ── Sync em tempo real (multi-usuário) ────────────────
 function setupRealtimeSync(){
-  unsubListeners.forEach(u=>{try{u();}catch(e){}});
+  unsubListeners.forEach(u=>u());
   unsubListeners = [];
-
-  // Lançamentos: tempo real automático, mas sem reler a coleção inteira a cada abertura.
-  const unsub = lancamentosDeltaQuery().onSnapshot(snap=>{
-    const changes=snap.docChanges();
-    changes.forEach(ch=>{
-      const d=cleanDoc(ch.doc);
-      if(ch.type==='removed' || d.deleted){
-        store.lancamentos=removeById(store.lancamentos,ch.doc.id);
-      } else {
-        upsertById(store.lancamentos,d);
-      }
-    });
-    if(changes.length) touchLancSyncFromChanges(changes);
-    store.lancamentos=(store.lancamentos||[]).filter(r=>!r.deleted);
-    lsSave();
-    setStatus('● '+store.lancamentos.length+' lanç. | online automático','var(--ok)');
-    if(changes.length && CM) safeRender(CM);
-  }, err=>{ console.warn('Lançamentos offline:',err.message); setStatus('● offline','var(--er)'); });
+  // lançamentos em tempo real com leitura controlada: não relê a coleção inteira a cada conexão.
+  const syncDesde = firebase.firestore.Timestamp.fromDate(new Date(Date.now()-2*60*1000));
+  const unsub = db.collection('lancamentos')
+    .where('updated_at','>=',syncDesde)
+    .onSnapshot(snap=>{
+      snap.docChanges().forEach(ch=>{
+        const d={id:ch.doc.id,...ch.doc.data()};
+        if(ch.type==='added'||ch.type==='modified'){
+          const i=store.lancamentos.findIndex(x=>x.id===d.id);
+          if(i>=0) store.lancamentos[i]=d; else store.lancamentos.unshift(d);
+        }
+      });
+      aplicarBlindagemDados({persist:false});
+      lsSave();
+      setStatus('● '+store.lancamentos.length+' lanç. | online','var(--ok)');
+      if(CM) safeRender(CM);
+    }, err=>{ setStatus('● online sem tempo real completo','var(--wa)'); console.warn('Sync controlado indisponível:',err.message); });
   unsubListeners.push(unsub);
 
-  // Coleções menores continuam em tempo real para todos verem alterações automaticamente.
-  const unsubAgenda = db.collection('agenda_financeira').onSnapshot(snap=>{
-    snap.docChanges().forEach(ch=>{
-      const d=cleanDoc(ch.doc);
-      if(ch.type==='removed') store.agenda=removeById(store.agenda,ch.doc.id);
-      else pushOrUpdateById(store.agenda,d);
-    });
-    lsSave();
-    if(CM==='agenda' || CM==='fluxocaixa') safeRender(CM);
-  }, err=>{ console.warn('Agenda offline:', err.message); });
+  // exclusões feitas pelo sistema são replicadas sem precisar reler todos os lançamentos.
+  const unsubDel = db.collection('_sync_deleted')
+    .where('ts','>=',syncDesde)
+    .onSnapshot(snap=>{
+      snap.docChanges().forEach(ch=>{
+        const d=ch.doc.data()||{};
+        if(d.col==='lancamentos'&&d.id){store.lancamentos=store.lancamentos.filter(x=>x.id!==d.id);}
+      });
+      lsSave(); if(CM) safeRender(CM);
+    },err=>console.warn('Sync de exclusões indisponível:',err.message));
+  unsubListeners.push(unsubDel);
+
+  // agenda financeira manual
+  const unsubAgenda = db.collection('agenda_financeira')
+    .onSnapshot(snap=>{
+      snap.docChanges().forEach(ch=>{
+        const d={id:ch.doc.id,...ch.doc.data()};
+        if(ch.type==='added'||ch.type==='modified'){
+          const i=store.agenda.findIndex(x=>x.id===d.id);
+          if(i>=0) store.agenda[i]=d; else store.agenda.push(d);
+        } else if(ch.type==='removed'){
+          store.agenda=store.agenda.filter(x=>x.id!==ch.doc.id);
+        }
+      });
+      lsSave();
+      if(CM==='agenda') safeRender(CM);
+    }, err=>{ console.warn('Agenda offline:', err.message); });
   unsubListeners.push(unsubAgenda);
 
+  // plano de contas em tempo real
   const unsubCC = db.collection('centrocusto').onSnapshot(snap=>{
     snap.docChanges().forEach(ch=>{
-      const d=cleanDoc(ch.doc);
-      if(ch.type==='removed') store.centrocusto=removeById(store.centrocusto,ch.doc.id);
-      else pushOrUpdateById(store.centrocusto,d);
+      const d={id:ch.doc.id,...ch.doc.data()};
+      if(ch.type==='added'||ch.type==='modified'){
+        const i=store.centrocusto.findIndex(x=>x.id===d.id);
+        if(i>=0) store.centrocusto[i]=d; else store.centrocusto.push(d);
+      } else if(ch.type==='removed'){
+        store.centrocusto=store.centrocusto.filter(x=>x.id!==ch.doc.id);
+      }
     });
     ccEnsureIds();
     lsSave();
@@ -1022,6 +1062,7 @@ function setupRealtimeSync(){
   }, err=>console.warn('Plano de contas offline:',err.message));
   unsubListeners.push(unsubCC);
 
+  // clientes atendidos em tempo real
   const unsubClientes = db.collection('clientes_mes').onSnapshot(snap=>{
     const novo={}; snap.docs.forEach(d=>{novo[d.id]=d.data().count||0;});
     store.clientes_mes=novo; lsSave();
@@ -1029,14 +1070,15 @@ function setupRealtimeSync(){
   }, err=>console.warn('Clientes offline:',err.message));
   unsubListeners.push(unsubClientes);
 
+  // patrimônio e configurações em tempo real
   const unsubPat = db.collection('patrimonio').onSnapshot(snap=>{
-    store.patrimonio=snap.docs.map(cleanDoc); lsSave();
+    store.patrimonio=snap.docs.map(d=>({id:d.id,...d.data()})); lsSave();
     if(['patrimonio','auditoria'].includes(CM)) safeRender(CM);
   }, err=>console.warn('Patrimônio offline:',err.message));
   unsubListeners.push(unsubPat);
 
   const unsubCfg = db.collection('config').onSnapshot(snap=>{
-    if(snap.docs.length){ store.cfg={...store.cfg,...snap.docs[0].data()}; lsSave(); if(['config','fluxocaixa'].includes(CM)) safeRender(CM); }
+    if(snap.docs.length){ store.cfg={...store.cfg,...snap.docs[0].data()}; lsSave(); if(['config','fluxocaixa'].includes(CM)) render(CM); }
   }, err=>console.warn('Config offline:',err.message));
   unsubListeners.push(unsubCfg);
 }
@@ -1044,25 +1086,22 @@ function setupRealtimeSync(){
 // ── CRUD Firestore ─────────────────────────────────────
 async function fbAdd(col, data){
   if(!fbOk) return null;
-  const payload={...(data||{})};
-  delete payload.id;
-  payload.updated_at = firebase.firestore.FieldValue.serverTimestamp();
-  const ref = await db.collection(col).add(payload);
+  delete data.id;
+  data.updated_at = firebase.firestore.FieldValue.serverTimestamp();
+  const ref = await db.collection(col).add(data);
   return ref.id;
 }
 async function fbSet(col, id, data){
-  if(!fbOk || !id) return;
-  const payload={...(data||{})};
-  delete payload.id;
-  payload.updated_at = firebase.firestore.FieldValue.serverTimestamp();
-  await db.collection(col).doc(id).set(payload, {merge:true});
+  if(!fbOk) return;
+  delete data.id;
+  data.updated_at = firebase.firestore.FieldValue.serverTimestamp();
+  await db.collection(col).doc(id).set(data, {merge:true});
 }
 async function fbDel(col, id){
-  if(!fbOk || !id) return;
-  if(col==='lancamentos'){
-    await db.collection(col).doc(id).set({deleted:true,deleted_at:firebase.firestore.FieldValue.serverTimestamp(),updated_at:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
-    return;
-  }
+  if(!fbOk) return;
+  try{
+    await db.collection('_sync_deleted').add({col,id,ts:firebase.firestore.FieldValue.serverTimestamp()});
+  }catch(_e){}
   await db.collection(col).doc(id).delete();
 }
 async function fbBatch(col, items){
@@ -1134,7 +1173,21 @@ function clienteInputAtivo(){
 
 // ── Importar seed para Firebase (primeira vez) ────────
 window.importarSeedFirebase = async function(){
-  toast('Importação da planilha antiga bloqueada para proteger a base recuperada de 2.284 lançamentos.','er');
+  if(!fbOk){ toast('Firebase não conectado','er'); return; }
+  const check = await db.collection('lancamentos').limit(1).get();
+  if(!check.empty){
+    toast('Firebase já tem dados! Use Restaurar se quiser reimportar.','in');
+    return;
+  }
+  toast('Importando '+SEED.l.length+' lançamentos… aguarde','in');
+  setStatus('● importando…','var(--wa)');
+  try {
+    await fbBatch('lancamentos', SEED.l.map(normL));
+    await fbBatch('centrocusto', SEED.cc.filter(c=>c.subcategoria&&c.subcategoria.trim()!==''));
+    await db.collection('config').doc('main').set(store.cfg);
+    toast('Importação concluída!','ok');
+    await loadAll(); render(CM);
+  } catch(e){ toast('Erro na importação: '+e.message,'er'); }
 };
 
 window.resetToSeed = function(){
@@ -1145,6 +1198,7 @@ window.resetToSeed = function(){
 // ── navegação + month nav ──────────────────────────────────
 let CM='visaogeral',CP=1,PS=30;
 let selMes=''; // YYYY-MM selecionado
+let selAno=String(new Date().getFullYear()); // ano acumulado selecionado
 
 const TITLES={visaogeral:'Visão Geral',dashboard:'Dashboard',lancamentos:'Lançamentos',agenda:'Agenda Financeira',fluxocaixa:'Fluxo de Caixa Corrente',dre:'DRE — Demonstração de Resultado',auditoria:'Auditoria Financeira',bi:'Inteligência de Negócio',centrocusto:'Plano de Contas',patrimonio:'Patrimônio',config:'Configurações'};
 const SHOW_MONTHNAV=['dashboard','dre','visaogeral'];
@@ -1161,21 +1215,36 @@ $('dbs').textContent='● Burger do Rei · '+store.lancamentos.length+' lanç.';
 
 let DT;window.debouncR=()=>{clearTimeout(DT);DT=setTimeout(()=>render(CM),230);};
 
+function anosDisponiveis(){
+  const anos=[...new Set(store.lancamentos.map(r=>(r.data_competencia||'').slice(0,4)).filter(Boolean))].sort((a,b)=>b.localeCompare(a,'pt-BR'));
+  return anos.length?anos:[String(new Date().getFullYear())];
+}
+function anoAtivo(){
+  const anos=anosDisponiveis();
+  if(selMes) return selMes.slice(0,4);
+  if(selAno&&anos.includes(selAno)) return selAno;
+  const anoAtual=String(new Date().getFullYear());
+  return anos.includes(anoAtual)?anoAtual:anos[0];
+}
+function periodoLbl(){return selMes?mesLbl(selMes):`${anoAtivo()} Acumulado`;}
 function buildMonthNav(){
   const mn=$('month-nav');
   if(!SHOW_MONTHNAV.includes(CM)){mn.classList.remove('show');return;}
   mn.classList.add('show');
-  const anos=[...new Set(store.lancamentos.map(r=>(r.data_competencia||'').slice(0,4)).filter(Boolean))].sort();
-  let html=`<div class="yr-group"><div class="m-tab all${!selMes?' act':''}" onclick="setMes('')">Tudo</div></div>`;
+  const anos=anosDisponiveis();
+  if(!selAno||!anos.includes(selAno)) selAno=anoAtivo();
+  let html='';
   anos.forEach(ano=>{
+    const actAno=(!selMes && anoAtivo()===ano)?' act':'';
+    html+=`<div class="yr-group"><div class="yr-pill${actAno}" onclick="setAno('${ano}')">${ano}<span class="mini">Acumulado</span></div>`;
     const mesesAno=[...new Set(store.lancamentos.filter(r=>(r.data_competencia||'').startsWith(ano+'-')).map(r=>(r.data_competencia||'').slice(5,7)).filter(Boolean))].sort();
-    html+=`<div class="yr-group"><span class="yr-lbl">${ano}</span>`;
     mesesAno.forEach(m=>{const key=`${ano}-${m}`;html+=`<div class="m-tab${selMes===key?' act':''}" onclick="setMes('${key}')">${MES_NM[+m-1]}</div>`;});
     html+='</div>';
   });
   mn.innerHTML=html;
 }
-window.setMes=m=>{selMes=m;CP=1;render(CM);buildMonthNav();};
+window.setAno=ano=>{selAno=ano;selMes='';CP=1;render(CM);buildMonthNav();};
+window.setMes=m=>{selMes=m;selAno=m?m.slice(0,4):anoAtivo();CP=1;render(CM);buildMonthNav();};
 
 // ══════════════════════════════════════════════
 // LANÇAMENTOS
@@ -1198,6 +1267,8 @@ function rLanc(){
   const subs=[...new Set(store.lancamentos.filter(r=>!($('fcat')||{value:''}).value||r.categoria===($('fcat')||{value:''}).value).map(r=>r.subcategoria).filter(Boolean))].sort();
 
   let data=store.lancamentos.filter(r=>{
+    const anoCmp=(r.data_competencia||r.data_vencimento||'').slice(0,4);
+    if((anoCmp==='2024'||anoCmp==='2025')&&!sw&&!fMc&&!fMv)return false;
     if(fS&&r.status!==fS)return false;
     if(fT&&r.rec_desp!==fT)return false;
     if(fC&&r.categoria!==fC)return false;
@@ -1245,7 +1316,6 @@ function rLanc(){
       <td><span class="bg ${r.status==='Concluído'?'bgreen':'byel'}">${r.status==='Concluído'?'✓':'⏳'}</span></td>
       <td><div class="ra">
         ${r.status==='Pendente'?`<button class="btn bp btn-s btn-i" title="Dar baixa" onclick="event.stopPropagation();abreBaixa('${r.id}')">✅</button>`:''}
-        ${r.status==='Pendente'?`<button class="btn bp btn-s btn-i" title="Dar baixa" onclick="event.stopPropagation();abreBaixa('${r.id}')">✅</button>`:''}
         <button class="btn bs btn-s btn-i" title="Editar" onclick="event.stopPropagation();eL('${r.id}')">✏️</button>
         <button class="btn bd2 btn-s btn-i" title="Excluir" onclick="event.stopPropagation();dL('${r.id}')">🗑️</button>
       </div></td>
@@ -1289,7 +1359,7 @@ function rLanc(){
       </tr></thead>
       <tbody>${rows||`<tr><td colspan="9"><div class="es"><div class="em">📭</div><h3>Sem resultados</h3></div></td></tr>`}</tbody>
     </table></div>
-    <div style="font-size:11px;color:var(--tx3);margin-top:8px;text-align:right">${data.length>dadosVisiveis.length?`Mostrando ${dadosVisiveis.length} de ${data.length} registros — refine a busca para carregar mais rápido`:`${data.length} registros`}</div>`;
+    <div style="font-size:11px;color:var(--tx3);margin-top:8px;text-align:right">${(!sw&&!fMc&&!fMv)?'Histórico 2024/2025 oculto por padrão · use busca ou filtro de mês para visualizar · ':''}${data.length>dadosVisiveis.length?`Mostrando ${dadosVisiveis.length} de ${data.length} registros — refine a busca para carregar mais rápido`:`${data.length} registros`}</div>`;
   if(arguments[0]===true){
     requestAnimationFrame(()=>{const el=$('sw-l');if(el){el.focus();const p=el.value.length;try{el.setSelectionRange(p,p);}catch(e){}}});
   }
@@ -1436,7 +1506,7 @@ function lancForm(r={}){
 function getLancD(){
   const catId=$('f-cat').value; const subId=$('f-sub').value;
   const lbl=ccLabelFromIds(catId,subId);
-  return{rec_desp:$('f-rd').value,status:$('f-st').value,data_competencia:$('f-dc').value,data_vencimento:$('f-dv').value||null,valor:parseFloat($('f-vl').value)||0,forma_pagamento:$('f-fp').value,categoria_id:lbl.categoria_id,categoria:lbl.categoria,subcategoria_id:lbl.subcategoria_id,subcategoria:lbl.subcategoria,descricao:$('f-ds').value.trim()};
+  return{rec_desp:$('f-rd').value,status:$('f-st').value,data_competencia:$('f-dc').value,data_vencimento:$('f-dv').value||null,valor:parseFloat($('f-vl').value)||0,forma_pagamento:$('f-fp').value,categoria_id:lbl.categoria_id,categoria:lbl.categoria,subcategoria_id:lbl.subcategoria_id,subcategoria:lbl.subcategoria,descricao:$('f-ds').value.trim()||lbl.subcategoria||lbl.categoria};
 }
 
 window.nL=()=>oM('Novo Lançamento',lancForm(),`<button class="btn bs" onclick="cM()">Cancelar</button><button class="btn bp" onclick="svL(null)">💾 Salvar</button>`,true);
@@ -1795,10 +1865,14 @@ function mkVencidoCard(r){
 }
 
 function rDash(){
-  const mes=selMes||new Date().toISOString().slice(0,7);
+  const anual=!selMes;
+  const ano=anoAtivo();
+  const mes=selMes||`${ano}-12`;
+  const periodo=periodoLbl();
+  const anoAnt=String(+ano-1);
   const mesAnt=addMonths(mes+'-01',-1).slice(0,7);
-  const lM=store.lancamentos.filter(r=>(r.data_competencia||'').startsWith(mes));
-  const lA=store.lancamentos.filter(r=>(r.data_competencia||'').startsWith(mesAnt));
+  const lM=store.lancamentos.filter(r=>(r.data_competencia||'').startsWith(anual?ano+'-':mes));
+  const lA=store.lancamentos.filter(r=>(r.data_competencia||'').startsWith(anual?anoAnt+'-':mesAnt));
   const entM=lM.filter(r=>r.rec_desp==='Contas a receber').reduce((s,r)=>s+r.valor,0);
   const saiM=lM.filter(r=>r.rec_desp!=='Contas a receber').reduce((s,r)=>s+r.valor,0);
   const entA=lA.filter(r=>r.rec_desp==='Contas a receber').reduce((s,r)=>s+r.valor,0);
@@ -1807,8 +1881,8 @@ function rDash(){
   const tPend=pend.reduce((s,r)=>s+r.valor,0);
   const varE=entA?((entM-entA)/entA*100):0,varS=saiA?((saiM-saiA)/saiA*100):0;
 
-  // Últimos 6 meses
-  const m6=Array.from({length:6},(_,i)=>addMonths(mes+'-01',i-5).slice(0,7));
+  // Gráfico: ano acumulado ou últimos 6 meses no modo mensal
+  const m6=anual?Array.from({length:12},(_,i)=>`${ano}-${String(i+1).padStart(2,'0')}`):Array.from({length:6},(_,i)=>addMonths(mes+'-01',i-5).slice(0,7));
   const maxV=Math.max(...m6.map(m=>{const l=store.lancamentos.filter(r=>(r.data_competencia||'').startsWith(m));return Math.max(l.filter(r=>r.rec_desp==='Contas a receber').reduce((s,r)=>s+r.valor,0),l.filter(r=>r.rec_desp!=='Contas a receber').reduce((s,r)=>s+r.valor,0));}),1);
   const bars6=m6.map(m=>{
     const l=store.lancamentos.filter(r=>(r.data_competencia||'').startsWith(m));
@@ -1844,17 +1918,17 @@ function rDash(){
 
   $('content').innerHTML=`
     <div class="kpis">
-      <div class="kpi" style="--kc:var(--ok)"><div class="kpi-l">Entradas — ${mesLbl(mes)}</div><div class="kpi-v">${fmt(entM)}</div><div class="kpi-s" style="color:${varE>=0?'var(--ok)':'var(--er)'}">${varE>=0?'+':''}${varE.toFixed(1)}% vs mês ant.</div></div>
-      <div class="kpi" style="--kc:var(--er)"><div class="kpi-l">Saídas — ${mesLbl(mes)}</div><div class="kpi-v">${fmt(saiM)}</div><div class="kpi-s" style="color:${varS<=0?'var(--ok)':'var(--er)'}">${varS>=0?'+':''}${varS.toFixed(1)}% vs mês ant.</div></div>
-      <div class="kpi" style="--kc:${entM-saiM>=0?'var(--ok)':'var(--er)'}"><div class="kpi-l">Resultado — ${mesLbl(mes)}</div><div class="kpi-v" style="color:${entM-saiM>=0?'var(--ok)':'var(--er)'}">${fmt(entM-saiM)}</div><div class="kpi-s">${entM?((entM-saiM)/entM*100).toFixed(1):'0'}% margem</div></div>
+      <div class="kpi" style="--kc:var(--ok)"><div class="kpi-l">Entradas — ${periodo}</div><div class="kpi-v">${fmt(entM)}</div><div class="kpi-s" style="color:${varE>=0?'var(--ok)':'var(--er)'}">${varE>=0?'+':''}${varE.toFixed(1)}% vs mês ant.</div></div>
+      <div class="kpi" style="--kc:var(--er)"><div class="kpi-l">Saídas — ${periodo}</div><div class="kpi-v">${fmt(saiM)}</div><div class="kpi-s" style="color:${varS<=0?'var(--ok)':'var(--er)'}">${varS>=0?'+':''}${varS.toFixed(1)}% vs mês ant.</div></div>
+      <div class="kpi" style="--kc:${entM-saiM>=0?'var(--ok)':'var(--er)'}"><div class="kpi-l">Resultado — ${periodo}</div><div class="kpi-v" style="color:${entM-saiM>=0?'var(--ok)':'var(--er)'}">${fmt(entM-saiM)}</div><div class="kpi-s">${entM?((entM-saiM)/entM*100).toFixed(1):'0'}% margem</div></div>
       <div class="kpi" style="--kc:var(--wa)"><div class="kpi-l">Pendentes</div><div class="kpi-v" style="color:var(--wa)">${fmt(tPend)}</div><div class="kpi-s">${pend.length} títulos · ${vencHoje.length} vencem hoje</div></div>
     </div>
     <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px">
-      <div class="bi-card"><div class="sh">Fluxo de Caixa <span>últimos 6 meses</span></div>
+      <div class="bi-card"><div class="sh">Fluxo de Caixa <span>${anual?ano+' por mês':'últimos 6 meses'}</span></div>
         <div style="display:flex;align-items:flex-end;gap:5px;min-height:120px">${bars6}</div>
         <div style="display:flex;gap:12px;margin-top:7px;font-size:10px;color:var(--tx2)"><span><i style="display:inline-block;width:8px;height:8px;background:var(--ok);border-radius:2px;margin-right:3px"></i>Vendas</span><span><i style="display:inline-block;width:8px;height:8px;background:var(--er);border-radius:2px;margin-right:3px"></i>Saídas</span></div>
       </div>
-      <div class="bi-card"><div class="sh">Top Despesas <span>${mesLbl(mes)}</span></div>
+      <div class="bi-card"><div class="sh">Top Despesas <span>${periodo}</span></div>
         ${topCat.map(([c,v])=>'<div class="bar-row"><div class="bar-lbl" style="font-size:11px" title="'+c+'">'+c+'</div><div class="bar-wrap"><div class="bar-fill" style="width:'+Math.round(v/maxCat*100)+'%;background:var(--er)"></div></div><div class="bar-val" style="color:var(--er);font-size:11px">'+fmt(v)+'</div></div>').join('')||'<span style="color:var(--tx3);font-size:12px">Sem dados</span>'}
       </div>
     </div>
@@ -1873,8 +1947,10 @@ function rDash(){
 // VISÃO GERAL (Breakeven + TM)
 // ══════════════════════════════════════════════
 function rVG(){
-  const mes=selMes||new Date().toISOString().slice(0,7);
-  const ano=mes.slice(0,4);
+  const anual=!selMes;
+  const ano=anoAtivo();
+  const mes=selMes||`${ano}-12`;
+  const periodo=periodoLbl();
   const mesesAno=[...new Set(store.lancamentos.filter(r=>(r.data_competencia||'').startsWith(ano)).map(r=>(r.data_competencia||'').slice(0,7)).filter(Boolean))].sort();
 
   const linhas=mesesAno.map(m=>{
@@ -1890,9 +1966,15 @@ function rVG(){
     return{m,receita,cv,cf,mc,mcPct,bep,resultado,clientes,tm};
   });
 
-  // KPIs do mês selecionado
-  const atual=linhas.find(l=>l.m===mes)||linhas[linhas.length-1]||{};
-  const totAno=linhas.reduce((s,l)=>s+l.receita,0);
+  // KPIs do mês selecionado ou acumulado do ano
+  const atualMes=linhas.find(l=>l.m===mes)||linhas[linhas.length-1]||{};
+  const totalReceita=linhas.reduce((s,l)=>s+l.receita,0);
+  const totalCv=linhas.reduce((s,l)=>s+l.cv,0);
+  const totalCf=linhas.reduce((s,l)=>s+l.cf,0);
+  const totalClientes=linhas.reduce((s,l)=>s+(+l.clientes||0),0);
+  const mcTotal=totalReceita-totalCv;
+  const mcPctTotal=totalReceita?mcTotal/totalReceita:0;
+  const atual=anual?{m:ano,receita:totalReceita,cv:totalCv,cf:totalCf,mc:mcTotal,mcPct:mcPctTotal,bep:mcPctTotal>0?totalCf/mcPctTotal:null,clientes:totalClientes,tm:totalClientes?totalReceita/totalClientes:0}:atualMes;
   const bepMedia=linhas.filter(l=>l.bep).reduce((s,l)=>s+l.bep,0)/(linhas.filter(l=>l.bep).length||1);
 
   const inputsClientes=mesesAno.map(m=>{
@@ -1930,9 +2012,9 @@ function rVG(){
 
   $('content').innerHTML=`
     <div class="kpis">
-      <div class="kpi" style="--kc:var(--ok)"><div class="kpi-l">Receita — ${mesLbl(mes)}</div><div class="kpi-v">${fmt(atual.receita||0)}</div></div>
-      <div class="kpi" style="--kc:var(--in)"><div class="kpi-l">Breakeven — ${mesLbl(mes)}</div><div class="kpi-v" style="color:var(--in)">${atual.bep?fmt(atual.bep):'N/D'}</div><div class="kpi-s">${atual.bep&&atual.receita?(atual.receita>=atual.bep?'✅ Atingido':'⚠️ '+fmt(atual.bep-atual.receita)+' a cobrir'):'—'}</div></div>
-      <div class="kpi" style="--kc:var(--acc)"><div class="kpi-l">Ticket Médio — ${mesLbl(mes)}</div><div class="kpi-v" style="color:var(--acc)">${atual.tm?fmt(atual.tm):'Informe clientes'}</div><div class="kpi-s">${atual.clientes?atual.clientes+' clientes':'Informe ao lado →'}</div></div>
+      <div class="kpi" style="--kc:var(--ok)"><div class="kpi-l">Receita — ${periodo}</div><div class="kpi-v">${fmt(atual.receita||0)}</div></div>
+      <div class="kpi" style="--kc:var(--in)"><div class="kpi-l">Breakeven — ${periodo}</div><div class="kpi-v" style="color:var(--in)">${atual.bep?fmt(atual.bep):'N/D'}</div><div class="kpi-s">${atual.bep&&atual.receita?(atual.receita>=atual.bep?'✅ Atingido':'⚠️ '+fmt(atual.bep-atual.receita)+' a cobrir'):'—'}</div></div>
+      <div class="kpi" style="--kc:var(--acc)"><div class="kpi-l">Ticket Médio — ${periodo}</div><div class="kpi-v" style="color:var(--acc)">${atual.tm?fmt(atual.tm):'Informe clientes'}</div><div class="kpi-s">${atual.clientes?atual.clientes+' clientes':'Informe ao lado →'}</div></div>
       <div class="kpi" style="--kc:var(--pu)"><div class="kpi-l">BEP Médio ${ano}</div><div class="kpi-v" style="color:var(--pu)">${fmt(bepMedia)}</div><div class="kpi-s">média ${mesesAno.length} meses</div></div>
     </div>
 
@@ -2303,8 +2385,13 @@ function auditoriaNoPlano(r,plano){if(r.subcategoria_id&&plano.ids.has(r.subcate
 function auditoriaItens(){
   const hoje=today(); const plano=auditoriaPlanoSet(); const out=[]; const dup={};
   (store.lancamentos||[]).forEach(r=>{
-    const chave=[r.rec_desp,r.data_competencia,r.data_vencimento,Math.round((+r.valor||0)*100),String(r.descricao||'').trim().toLowerCase()].join('|');
-    dup[chave]=(dup[chave]||[]).concat(r);
+    const diaDup=(r.data_competencia||r.data_vencimento||r.data_efetivacao||'').slice(0,10);
+    const nomeDup=ccNorm(r.descricao||r.subcategoria||r.categoria||'');
+    const valorDup=Math.round((+r.valor||0)*100);
+    if(diaDup&&nomeDup&&valorDup>0){
+      const chave=[diaDup,valorDup,nomeDup].join('|');
+      dup[chave]=(dup[chave]||[]).concat(r);
+    }
     const faltas=[];
     if(!r.data_competencia)faltas.push('competência'); if(!r.data_vencimento)faltas.push('vencimento'); if(!r.descricao)faltas.push('descrição'); if(!r.categoria)faltas.push('categoria'); if(!r.subcategoria)faltas.push('subcategoria'); if(!r.forma_pagamento)faltas.push('forma pgto'); if(!(+r.valor>0))faltas.push('valor');
     if(faltas.length) out.push({sev:'Alta',tipo:'Campos obrigatórios ausentes',msg:`${r.descricao||r.categoria||'Lançamento sem descrição'} está sem ${faltas.join(', ')}.`,meta:[fmt(r.valor),fmtD(r.data_vencimento),r.status||'—'],id:r.id,source:'lancamento'});
@@ -2313,7 +2400,7 @@ function auditoriaItens(){
     if(!isDone(r)&&r.data_vencimento&&r.data_vencimento<hoje) out.push({sev:'Alta',tipo:'Vencido em aberto',msg:`Pagamento/recebimento vencido em ${fmtD(r.data_vencimento)} ainda está aberto.`,meta:[r.rec_desp||'—',r.descricao||'—',fmt(r.valor)],id:r.id,source:'lancamento'});
     if(r.data_competencia&&r.data_vencimento){const dc=r.data_competencia.slice(0,7),dv=r.data_vencimento.slice(0,7); if(dc!==dv) out.push({sev:'Baixa',tipo:'Competência diferente do vencimento',msg:`Competência ${mesLbl(dc)} e vencimento ${mesLbl(dv)}. Está certo se for intencional, mas deve ser conferido.`,meta:[r.descricao||'—',fmt(r.valor)],id:r.id,source:'lancamento'});}
   });
-  Object.values(dup).filter(a=>a.length>1).forEach(a=>out.push({sev:'Média',tipo:'Possível duplicidade',msg:`${a.length} lançamentos parecem iguais: ${a[0].descricao||a[0].categoria||'sem descrição'}.`,meta:[fmt(a[0].valor),fmtD(a[0].data_vencimento),'IDs internos ocultos'],id:a[0].id,source:'lancamento'}));
+  Object.values(dup).filter(a=>a.length>1).forEach(a=>out.push({sev:'Média',tipo:'Possível duplicidade',msg:`${a.length} lançamentos com mesmo dia, mesmo valor e mesmo nome: ${a[0].descricao||a[0].categoria||'sem descrição'}.`,meta:[fmt(a[0].valor),fmtD(a[0].data_competencia||a[0].data_vencimento),'Critério: valor + dia + nome'],id:a[0].id,source:'lancamento'}));
   (store.agenda||[]).forEach(r=>{ if(!r.data||!r.descricao||!(+r.valor>0)) out.push({sev:'Média',tipo:'Agenda manual incompleta',msg:`Item manual da agenda com data, descrição ou valor faltando.`,meta:[r.descricao||'—',fmt(r.valor),fmtD(r.data)],id:r.id,source:'agenda'}); });
   return out.sort((a,b)=>({Alta:0,Média:1,Baixa:2}[a.sev]-({Alta:0,Média:1,Baixa:2}[b.sev])));
 }
@@ -2827,16 +2914,39 @@ window.render=function(m){
 // ── INIT ────────────────────────────────────────────────
 (async function(){
   initFirebase();
-  let ok=false;
   if(fbOk){
-    ok = await loadAll();
+    // Tentar carregar do Firebase
+    const ok = await loadAll();
+    if(!ok){
+      // Firebase falhou: usar localStorage
+      if(!lsLoad() && typeof SEED!=='undefined'){
+        store.lancamentos = SEED.l.map(normL);
+        store.centrocusto = SEED.cc.filter(c=>c.subcategoria&&c.subcategoria.trim()!=='');
+      }
+    }
+    // Se Firebase vazio, oferecer importação do seed
+    if(store.lancamentos.length===0 && typeof SEED!=='undefined'){
+      setStatus('● Firebase vazio','var(--wa)');
+      $('content').innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:60vh;gap:16px;text-align:center">
+        <div style="font-size:36px">🚀</div>
+        <h2 style="font-family:'Syne',sans-serif">Primeiro acesso</h2>
+        <p style="color:var(--tx2);max-width:380px">O banco de dados está vazio. Importe os dados da planilha para começar.</p>
+        <button class="btn bp" style="padding:12px 28px;font-size:14px" onclick="importarSeedFirebase()">
+          📥 Importar dados da planilha (${typeof SEED!=='undefined'?SEED.l.length:0} lançamentos)
+        </button>
+        <p style="font-size:11px;color:var(--tx3)">Isso só precisa ser feito uma vez. Os dados ficam no Firebase para todos.</p>
+      </div>`;
+      return;
+    }
   } else {
-    ok = lsLoad();
-    setStatus(ok?'● '+store.lancamentos.length+' lanç. | local':'● local sem dados','var(--wa)');
-  }
-  if(!ok && !(store.lancamentos||[]).length){
-    $('content').innerHTML=`<div class="es"><div class="em">⚠️</div><h3>Firebase indisponível</h3><p>Não foi importado seed antigo. Aguarde a quota voltar ou abra em um computador que já tenha cache local.</p></div>`;
-    return;
+    // Sem Firebase: usar localStorage ou seed
+    if(!lsLoad() && typeof SEED!=='undefined'){
+      store.lancamentos = SEED.l.map(normL);
+      store.centrocusto = SEED.cc.filter(c=>c.subcategoria&&c.subcategoria.trim()!=='');
+      ccEnsureIds();
+      lsSave();
+    }
+    setStatus('● local (sem Firebase)','var(--wa)');
   }
   render('visaogeral');
 })();
