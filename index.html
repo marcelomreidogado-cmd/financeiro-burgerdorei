@@ -874,7 +874,7 @@ function lsLoad(){
     const d = JSON.parse(localStorage.getItem(LS_KEY)||'null');
     if(d && d.lancamentos && d.lancamentos.length){
       Object.assign(store, {
-        lancamentos:d.lancamentos, centrocusto:d.centrocusto||store.centrocusto,
+        lancamentos:(d.lancamentos||[]).filter(r=>!r.deleted), centrocusto:d.centrocusto||store.centrocusto,
         patrimonio:d.patrimonio||[], agenda:d.agenda||[], clientes_mes:d.clientes_mes||{}, cfg:d.cfg||store.cfg
       });
       ccEnsureIds();
@@ -890,10 +890,53 @@ function setStatus(txt, color){
   if(el){el.textContent=txt;el.style.color=color;}
 }
 
-// ── Carregar tudo do Firestore ────────────────────────
+// ── Carregamento econômico + tempo real automático ───────────────
+const LS_LANC_SYNC_KEY = 'bdr_lancamentos_sync_ms_v2';
+const DELTA_SYNC_SAFETY_MS = 10 * 60 * 1000;
+function getLancSyncMs(){try{return +(localStorage.getItem(LS_LANC_SYNC_KEY)||0)||0;}catch(e){return 0;}}
+function setLancSyncMs(ms){try{localStorage.setItem(LS_LANC_SYNC_KEY,String(Math.max(0,Math.floor(ms||0))));}catch(e){}}
+function tsToMs(v){
+  if(!v) return 0;
+  if(typeof v.toMillis==='function') return v.toMillis();
+  if(typeof v.seconds==='number') return v.seconds*1000 + Math.floor((v.nanoseconds||0)/1000000);
+  if(typeof v._seconds==='number') return v._seconds*1000 + Math.floor((v._nanoseconds||0)/1000000);
+  if(typeof v==='number') return v;
+  const p=Date.parse(v); return Number.isFinite(p)?p:0;
+}
+function cleanDoc(doc){return {id:doc.id,...doc.data()};}
+function upsertById(arr,item){const i=arr.findIndex(x=>x.id===item.id); if(i>=0) arr[i]={...arr[i],...item}; else arr.unshift(item);}
+function pushOrUpdateById(arr,item){const i=arr.findIndex(x=>x.id===item.id); if(i>=0) arr[i]={...arr[i],...item}; else arr.push(item);}
+function removeById(arr,id){return (arr||[]).filter(x=>x.id!==id);}
+function touchLancSyncFromChanges(changes){
+  let max=getLancSyncMs();
+  changes.forEach(ch=>{const d=ch.doc&&ch.doc.data?ch.doc.data():{}; const ms=tsToMs(d.updated_at)||tsToMs(d.deleted_at); if(ms>max) max=ms;});
+  // Avança o marcador com janela de segurança para não reler a base inteira, sem perder alterações recentes.
+  const safeNow=Date.now()-2000;
+  setLancSyncMs(Math.max(max,safeNow));
+}
+function lancamentosDeltaQuery(){
+  const ms=getLancSyncMs();
+  if(ms>0){
+    const from=firebase.firestore.Timestamp.fromMillis(Math.max(0,ms-DELTA_SYNC_SAFETY_MS));
+    return db.collection('lancamentos').where('updated_at','>=',from).orderBy('updated_at','desc');
+  }
+  return db.collection('lancamentos').orderBy('data_competencia','desc');
+}
+
 async function loadAll(){
   setStatus('● Conectando…','var(--wa)');
+  const tinhaCache=lsLoad();
+  const temMarcador=getLancSyncMs()>0;
   try {
+    // Se este computador já tem cache + marcador, não relê os 2.284 lançamentos.
+    // Ele abre pelo cache e fica ouvindo apenas alterações novas/alteradas.
+    if(tinhaCache && temMarcador){
+      setStatus('● '+store.lancamentos.length+' lanç. | online econômico','var(--ok)');
+      setupRealtimeSync();
+      return true;
+    }
+
+    // Primeiro acesso deste computador, ou cache antigo sem marcador: faz uma carga completa uma única vez.
     const [lSnap,ccSnap,patSnap,cfgSnap,cmSnap] = await Promise.all([
       db.collection('lancamentos').orderBy('data_competencia','desc').get(),
       db.collection('centrocusto').get(),
@@ -904,75 +947,74 @@ async function loadAll(){
     let agSnap = null;
     try { agSnap = await db.collection('agenda_financeira').get(); }
     catch(e){ console.warn('Agenda ainda não disponível no Firebase:', e.message); }
-    store.lancamentos  = lSnap.docs.map(d=>({id:d.id,...d.data()}));
-    store.centrocusto  = ccSnap.docs.map(d=>({id:d.id,...d.data()}));
-    store.patrimonio   = patSnap.docs.map(d=>({id:d.id,...d.data()}));
-    store.agenda       = agSnap ? agSnap.docs.map(d=>({id:d.id,...d.data()})) : (store.agenda||[]);
+    store.lancamentos  = lSnap.docs.map(cleanDoc).filter(d=>!d.deleted);
+    store.centrocusto  = ccSnap.docs.map(cleanDoc);
+    store.patrimonio   = patSnap.docs.map(cleanDoc);
+    store.agenda       = agSnap ? agSnap.docs.map(cleanDoc) : (store.agenda||[]);
     store.clientes_mes = {};
     cmSnap.docs.forEach(d=>{ store.clientes_mes[d.id]=d.data().count||0; });
     if(cfgSnap.docs.length) store.cfg = {...store.cfg,...cfgSnap.docs[0].data()};
     ccEnsureIds({persist:false});
+    setLancSyncMs(Date.now());
     lsSave();
     setStatus('● '+store.lancamentos.length+' lanç. | online','var(--ok)');
     setupRealtimeSync();
     return true;
   } catch(e){
+    console.warn('Falha ao carregar Firestore:', e.message);
+    if(tinhaCache){
+      setStatus('● '+store.lancamentos.length+' lanç. | cache local','var(--wa)');
+      try{ setupRealtimeSync(); }catch(_e){}
+      toast('Firebase indisponível — abrindo cache local','in');
+      return true;
+    }
     setStatus('● offline','var(--er)');
-    toast('Firebase offline — usando dados locais','in');
+    toast('Firebase offline/sem quota — sem cache local neste computador','er');
     return false;
   }
 }
 
-// ── Sync em tempo real (multi-usuário) ────────────────
+// ── Sync em tempo real econômico (multi-usuário) ──────
 function setupRealtimeSync(){
-  unsubListeners.forEach(u=>u());
+  unsubListeners.forEach(u=>{try{u();}catch(e){}});
   unsubListeners = [];
-  // lancamentos
-  const unsub = db.collection('lancamentos')
-    .orderBy('data_competencia','desc')
-    .onSnapshot(snap=>{
-      snap.docChanges().forEach(ch=>{
-        const d={id:ch.doc.id,...ch.doc.data()};
-        if(ch.type==='added'||ch.type==='modified'){
-          const i=store.lancamentos.findIndex(x=>x.id===d.id);
-          if(i>=0) store.lancamentos[i]=d; else store.lancamentos.unshift(d);
-        } else if(ch.type==='removed'){
-          store.lancamentos=store.lancamentos.filter(x=>x.id!==ch.doc.id);
-        }
-      });
-      lsSave();
-      setStatus('● '+store.lancamentos.length+' lanç. | online','var(--ok)');
-      if(CM) safeRender(CM);
-    }, err=>{ setStatus('● offline','var(--er)'); });
+
+  // Lançamentos: tempo real automático, mas sem reler a coleção inteira a cada abertura.
+  const unsub = lancamentosDeltaQuery().onSnapshot(snap=>{
+    const changes=snap.docChanges();
+    changes.forEach(ch=>{
+      const d=cleanDoc(ch.doc);
+      if(ch.type==='removed' || d.deleted){
+        store.lancamentos=removeById(store.lancamentos,ch.doc.id);
+      } else {
+        upsertById(store.lancamentos,d);
+      }
+    });
+    if(changes.length) touchLancSyncFromChanges(changes);
+    store.lancamentos=(store.lancamentos||[]).filter(r=>!r.deleted);
+    lsSave();
+    setStatus('● '+store.lancamentos.length+' lanç. | online automático','var(--ok)');
+    if(changes.length && CM) safeRender(CM);
+  }, err=>{ console.warn('Lançamentos offline:',err.message); setStatus('● offline','var(--er)'); });
   unsubListeners.push(unsub);
 
-  // agenda financeira manual
-  const unsubAgenda = db.collection('agenda_financeira')
-    .onSnapshot(snap=>{
-      snap.docChanges().forEach(ch=>{
-        const d={id:ch.doc.id,...ch.doc.data()};
-        if(ch.type==='added'||ch.type==='modified'){
-          const i=store.agenda.findIndex(x=>x.id===d.id);
-          if(i>=0) store.agenda[i]=d; else store.agenda.push(d);
-        } else if(ch.type==='removed'){
-          store.agenda=store.agenda.filter(x=>x.id!==ch.doc.id);
-        }
-      });
-      lsSave();
-      if(CM==='agenda') safeRender(CM);
-    }, err=>{ console.warn('Agenda offline:', err.message); });
+  // Coleções menores continuam em tempo real para todos verem alterações automaticamente.
+  const unsubAgenda = db.collection('agenda_financeira').onSnapshot(snap=>{
+    snap.docChanges().forEach(ch=>{
+      const d=cleanDoc(ch.doc);
+      if(ch.type==='removed') store.agenda=removeById(store.agenda,ch.doc.id);
+      else pushOrUpdateById(store.agenda,d);
+    });
+    lsSave();
+    if(CM==='agenda' || CM==='fluxocaixa') safeRender(CM);
+  }, err=>{ console.warn('Agenda offline:', err.message); });
   unsubListeners.push(unsubAgenda);
 
-  // plano de contas em tempo real
   const unsubCC = db.collection('centrocusto').onSnapshot(snap=>{
     snap.docChanges().forEach(ch=>{
-      const d={id:ch.doc.id,...ch.doc.data()};
-      if(ch.type==='added'||ch.type==='modified'){
-        const i=store.centrocusto.findIndex(x=>x.id===d.id);
-        if(i>=0) store.centrocusto[i]=d; else store.centrocusto.push(d);
-      } else if(ch.type==='removed'){
-        store.centrocusto=store.centrocusto.filter(x=>x.id!==ch.doc.id);
-      }
+      const d=cleanDoc(ch.doc);
+      if(ch.type==='removed') store.centrocusto=removeById(store.centrocusto,ch.doc.id);
+      else pushOrUpdateById(store.centrocusto,d);
     });
     ccEnsureIds();
     lsSave();
@@ -980,7 +1022,6 @@ function setupRealtimeSync(){
   }, err=>console.warn('Plano de contas offline:',err.message));
   unsubListeners.push(unsubCC);
 
-  // clientes atendidos em tempo real
   const unsubClientes = db.collection('clientes_mes').onSnapshot(snap=>{
     const novo={}; snap.docs.forEach(d=>{novo[d.id]=d.data().count||0;});
     store.clientes_mes=novo; lsSave();
@@ -988,15 +1029,14 @@ function setupRealtimeSync(){
   }, err=>console.warn('Clientes offline:',err.message));
   unsubListeners.push(unsubClientes);
 
-  // patrimônio e configurações em tempo real
   const unsubPat = db.collection('patrimonio').onSnapshot(snap=>{
-    store.patrimonio=snap.docs.map(d=>({id:d.id,...d.data()})); lsSave();
+    store.patrimonio=snap.docs.map(cleanDoc); lsSave();
     if(['patrimonio','auditoria'].includes(CM)) safeRender(CM);
   }, err=>console.warn('Patrimônio offline:',err.message));
   unsubListeners.push(unsubPat);
 
   const unsubCfg = db.collection('config').onSnapshot(snap=>{
-    if(snap.docs.length){ store.cfg={...store.cfg,...snap.docs[0].data()}; lsSave(); if(['config','fluxocaixa'].includes(CM)) render(CM); }
+    if(snap.docs.length){ store.cfg={...store.cfg,...snap.docs[0].data()}; lsSave(); if(['config','fluxocaixa'].includes(CM)) safeRender(CM); }
   }, err=>console.warn('Config offline:',err.message));
   unsubListeners.push(unsubCfg);
 }
@@ -1004,19 +1044,25 @@ function setupRealtimeSync(){
 // ── CRUD Firestore ─────────────────────────────────────
 async function fbAdd(col, data){
   if(!fbOk) return null;
-  delete data.id;
-  data.updated_at = firebase.firestore.FieldValue.serverTimestamp();
-  const ref = await db.collection(col).add(data);
+  const payload={...(data||{})};
+  delete payload.id;
+  payload.updated_at = firebase.firestore.FieldValue.serverTimestamp();
+  const ref = await db.collection(col).add(payload);
   return ref.id;
 }
 async function fbSet(col, id, data){
-  if(!fbOk) return;
-  delete data.id;
-  data.updated_at = firebase.firestore.FieldValue.serverTimestamp();
-  await db.collection(col).doc(id).set(data, {merge:true});
+  if(!fbOk || !id) return;
+  const payload={...(data||{})};
+  delete payload.id;
+  payload.updated_at = firebase.firestore.FieldValue.serverTimestamp();
+  await db.collection(col).doc(id).set(payload, {merge:true});
 }
 async function fbDel(col, id){
-  if(!fbOk) return;
+  if(!fbOk || !id) return;
+  if(col==='lancamentos'){
+    await db.collection(col).doc(id).set({deleted:true,deleted_at:firebase.firestore.FieldValue.serverTimestamp(),updated_at:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+    return;
+  }
   await db.collection(col).doc(id).delete();
 }
 async function fbBatch(col, items){
@@ -1088,21 +1134,7 @@ function clienteInputAtivo(){
 
 // ── Importar seed para Firebase (primeira vez) ────────
 window.importarSeedFirebase = async function(){
-  if(!fbOk){ toast('Firebase não conectado','er'); return; }
-  const check = await db.collection('lancamentos').limit(1).get();
-  if(!check.empty){
-    toast('Firebase já tem dados! Use Restaurar se quiser reimportar.','in');
-    return;
-  }
-  toast('Importando '+SEED.l.length+' lançamentos… aguarde','in');
-  setStatus('● importando…','var(--wa)');
-  try {
-    await fbBatch('lancamentos', SEED.l.map(normL));
-    await fbBatch('centrocusto', SEED.cc.filter(c=>c.subcategoria&&c.subcategoria.trim()!==''));
-    await db.collection('config').doc('main').set(store.cfg);
-    toast('Importação concluída!','ok');
-    await loadAll(); render(CM);
-  } catch(e){ toast('Erro na importação: '+e.message,'er'); }
+  toast('Importação da planilha antiga bloqueada para proteger a base recuperada de 2.284 lançamentos.','er');
 };
 
 window.resetToSeed = function(){
@@ -1212,6 +1244,7 @@ function rLanc(){
       <td class="tr"><span class="${isIn?'vin':'vout'}">${isIn?'+':'−'} ${fmtN(r.valor)}</span></td>
       <td><span class="bg ${r.status==='Concluído'?'bgreen':'byel'}">${r.status==='Concluído'?'✓':'⏳'}</span></td>
       <td><div class="ra">
+        ${r.status==='Pendente'?`<button class="btn bp btn-s btn-i" title="Dar baixa" onclick="event.stopPropagation();abreBaixa('${r.id}')">✅</button>`:''}
         ${r.status==='Pendente'?`<button class="btn bp btn-s btn-i" title="Dar baixa" onclick="event.stopPropagation();abreBaixa('${r.id}')">✅</button>`:''}
         <button class="btn bs btn-s btn-i" title="Editar" onclick="event.stopPropagation();eL('${r.id}')">✏️</button>
         <button class="btn bd2 btn-s btn-i" title="Excluir" onclick="event.stopPropagation();dL('${r.id}')">🗑️</button>
@@ -2794,39 +2827,16 @@ window.render=function(m){
 // ── INIT ────────────────────────────────────────────────
 (async function(){
   initFirebase();
+  let ok=false;
   if(fbOk){
-    // Tentar carregar do Firebase
-    const ok = await loadAll();
-    if(!ok){
-      // Firebase falhou: usar localStorage
-      if(!lsLoad() && typeof SEED!=='undefined'){
-        store.lancamentos = SEED.l.map(normL);
-        store.centrocusto = SEED.cc.filter(c=>c.subcategoria&&c.subcategoria.trim()!=='');
-      }
-    }
-    // Se Firebase vazio, oferecer importação do seed
-    if(store.lancamentos.length===0 && typeof SEED!=='undefined'){
-      setStatus('● Firebase vazio','var(--wa)');
-      $('content').innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:60vh;gap:16px;text-align:center">
-        <div style="font-size:36px">🚀</div>
-        <h2 style="font-family:'Syne',sans-serif">Primeiro acesso</h2>
-        <p style="color:var(--tx2);max-width:380px">O banco de dados está vazio. Importe os dados da planilha para começar.</p>
-        <button class="btn bp" style="padding:12px 28px;font-size:14px" onclick="importarSeedFirebase()">
-          📥 Importar dados da planilha (${typeof SEED!=='undefined'?SEED.l.length:0} lançamentos)
-        </button>
-        <p style="font-size:11px;color:var(--tx3)">Isso só precisa ser feito uma vez. Os dados ficam no Firebase para todos.</p>
-      </div>`;
-      return;
-    }
+    ok = await loadAll();
   } else {
-    // Sem Firebase: usar localStorage ou seed
-    if(!lsLoad() && typeof SEED!=='undefined'){
-      store.lancamentos = SEED.l.map(normL);
-      store.centrocusto = SEED.cc.filter(c=>c.subcategoria&&c.subcategoria.trim()!=='');
-      ccEnsureIds();
-      lsSave();
-    }
-    setStatus('● local (sem Firebase)','var(--wa)');
+    ok = lsLoad();
+    setStatus(ok?'● '+store.lancamentos.length+' lanç. | local':'● local sem dados','var(--wa)');
+  }
+  if(!ok && !(store.lancamentos||[]).length){
+    $('content').innerHTML=`<div class="es"><div class="em">⚠️</div><h3>Firebase indisponível</h3><p>Não foi importado seed antigo. Aguarde a quota voltar ou abra em um computador que já tenha cache local.</p></div>`;
+    return;
   }
   render('visaogeral');
 })();
