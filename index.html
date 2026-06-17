@@ -1,10 +1,29 @@
 <!DOCTYPE html>
-<!-- HOTFIX_AGENDA_DEDUP_DELETE_SYNC_2026-06-17 -->
+<!-- BUILD_LIMPO_AGENDA_DELETE_CACHE_2026_06_17_2118 -->
+<!-- HOTFIX_AGENDA_DELETE_VISIBILITY_SYNC_CACHECLEAN_2026-06-17 -->
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Financeiro — Burger do Rei | HOTFIX DRE API DESIGN 2026-06-06 | HOTFIX LANCAMENTOS 2026-06-06</title>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<meta name="financeiro-build" content="BUILD_LIMPO_AGENDA_DELETE_CACHE_2026_06_17_2118">
+<script>
+window.__BUILD_ID='BUILD_LIMPO_AGENDA_DELETE_CACHE_2026_06_17_2118';
+(function(){
+  try{
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.getRegistrations().then(function(regs){ regs.forEach(function(reg){ reg.unregister(); }); }).catch(function(){});
+    }
+    if('caches' in window){
+      caches.keys().then(function(keys){ keys.forEach(function(k){ caches.delete(k); }); }).catch(function(){});
+    }
+  }catch(e){}
+})();
+</script>
+
+<title>Financeiro — Burger do Rei | BUILD_LIMPO_AGENDA_DELETE_CACHE_2026_06_17_2118</title>
 <!-- HOTFIX_LANCAMENTOS_20260606_DBLCLICK_STATUS_VIEW -->
 <!-- HOTFIX_DRE_API_DESIGN_20260606 -->
 
@@ -17,8 +36,8 @@
 <meta name="theme-color" content="#0c0e14">
 <meta name="description" content="Sistema financeiro Burger do Rei">
 
-<!-- Manifest PWA removido para evitar travamento no Chrome local -->
-<script>/* PWA removido nesta versão leve */</script>
+<!-- Manifest/PWA desativado para evitar cache antigo segurando versão anterior -->
+<script>/* BUILD_LIMPO_AGENDA_DELETE_CACHE_2026_06_17_2118: PWA/manifest/service worker desativados nesta versão limpa */</script>
 
 <!-- Fontes externas removidas: usa fontes do sistema para abrir mais leve -->
 <style>
@@ -1309,7 +1328,6 @@ let unsubListeners = [];
 
 // Blindagem pós-resgate: evita re-render pesado enquanto o usuário clica/digita.
 const APP_VERSION = 'FINAL_MELHORIAS_BLINDAGEM_POS_RESGATE_FIX_TRAVAMENTO_2026-05-15';
-const AGENDA_DELETE_FIX = 'HOTFIX_AGENDA_DELETE_VISIBILITY_SYNC_2026-06-17';
 let renderTimer = null;
 let pendingRender = null;
 function modalAberto(){
@@ -3283,35 +3301,19 @@ window.svAgenda=async function(id){
 };
 window.dAgenda=function(id){
   const r=(store.agenda||[]).find(x=>x.id===id);if(!r)return;
+  const dia=r.data;
   const key=agManualKey(r);
-  const diaExcluido=r.data;
   const ids=key?(store.agenda||[]).filter(x=>agManualKey(x)===key&&x.id).map(x=>x.id):[id];
-  confirm_('Excluir item manual da agenda',`Excluir ${r.descricao||r.origem||'este item'} de ${fmtD(r.data)}?${ids.length>1?' Também serão removidas '+ids.length+' duplicidades do mesmo dia/origem.':''}`,async()=>{
-    const idSet=new Set(ids);
-    store.agenda=store.agenda.filter(x=>!idSet.has(x.id));
-    try{normalizeAgendaStore();}catch(_e){}
-
-    // Atualização visual imediata: não usa safeRender aqui, porque o modal está aberto e safeRender adia a tela.
-    if(CM==='agenda') rAgenda();
-    else if(CM==='auditoria') rAuditoria();
-    else if(['fluxocaixa','visaogeral','dashboard'].includes(CM)) render(CM);
-
-    // Se o detalhe do dia estiver aberto, atualiza o próprio modal. Se não sobrar item no dia, fecha.
-    if($('mdbg')&&$('mdbg').classList.contains('op')){
-      if(agAllMesItems().some(x=>x.data===diaExcluido)) verAgendaDia(diaExcluido);
-      else cM();
-    }
-
+  confirm_('Excluir item manual da agenda',`Excluir ${r.descricao||'este item'} de ${fmtD(r.data)}?${ids.length>1?' Também serão removidas '+ids.length+' duplicidades do mesmo dia/origem.':''}`,async()=>{
+    store.agenda=(store.agenda||[]).filter(x=>!ids.includes(x.id));
+    normalizeAgendaStore();
+    lsSave();
+    const refrescarAgenda=()=>{ if(['agenda','fluxocaixa','visaogeral','dashboard','auditoria'].includes(CM)) safeRender(CM); else rAgenda(); };
+    refrescarAgenda();
+    const restantes=agAllMesItems().filter(x=>x.data===dia).sort(agSort);
+    if(restantes.length){ setTimeout(()=>verAgendaDia(dia),0); } else { cM(); }
     toast(ids.length>1?'Item e duplicidades excluídos ✅':'Item manual excluído','ok');
-    try{
-      const apagar=new Set(ids);
-      if(fbOk&&key&&diaExcluido){
-        const snap=await db.collection('agenda_financeira').where('data','==',diaExcluido).get();
-        snap.docs.forEach(doc=>{const d={id:doc.id,...doc.data()}; if(agManualKey(d)===key) apagar.add(doc.id);});
-      }
-      for(const did of apagar){await fbDel('agenda_financeira',did);}
-      lsSave();
-    }catch(e){lsSave();}
+    try{for(const did of ids){await fbDel('agenda_financeira',did);}lsSave();}catch(e){lsSave();}
   });
 };
 window.baixaAgenda=function(id){
@@ -3564,5 +3566,7 @@ window.render=function(m){
   render(CM||'visaogeral');
 })();
 </script>
+
+<!-- BUILD_LIMPO_AGENDA_DELETE_CACHE_2026_06_17_2118_END -->
 </body>
 </html>
