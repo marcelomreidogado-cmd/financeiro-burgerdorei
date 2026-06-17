@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Financeiro — Burger do Rei | HOTFIX DRE API DESIGN 2026-06-06 | HOTFIX LANCAMENTOS 2026-06-06</title>
+<title>Financeiro — Burger do Rei | HOTFIX AGENDA SYNC 2026-06-06 | HOTFIX DRE API DESIGN | HOTFIX LANCAMENTOS</title>
 <!-- HOTFIX_LANCAMENTOS_20260606_DBLCLICK_STATUS_VIEW -->
 <!-- HOTFIX_DRE_API_DESIGN_20260606 -->
+<!-- HOTFIX_AGENDA_SYNC_DEDUP_20260606 -->
 
 <!-- PWA + Favicon -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -613,6 +614,84 @@ body,.app,.content,.btn,.fc,.fv,input,select,textarea,table{font-family:var(--fo
 @media(max-width:900px){.fx-top{grid-template-columns:1fr}.ag-shell .ag-title span{font-size:16px!important}}
 
 
+/* DRE-API-DESIGN-2026-06-06: corrige sobreposição entre cabeçalho fixo, coluna de descrição e números na rolagem */
+#content.dre-content{
+  position:relative;
+  overflow:auto!important;
+  background:var(--bg);
+}
+#content.dre-content .dre-table-shell{
+  position:relative;
+  isolation:isolate;
+  overflow:visible!important;
+}
+#content.dre-content .dre-table-shell .dre-t{
+  border-collapse:separate!important;
+  border-spacing:0!important;
+}
+#content.dre-content .dre-table-shell .dre-t th,
+#content.dre-content .dre-table-shell .dre-t td{
+  background-clip:padding-box!important;
+}
+#content.dre-content .dre-table-shell .dre-t thead th{
+  position:sticky!important;
+  top:0!important;
+  z-index:90!important;
+  background:var(--s2)!important;
+  box-shadow:0 2px 0 var(--bd2), 0 6px 12px rgba(7,10,17,.85)!important;
+}
+#content.dre-content .dre-table-shell .dre-t thead th:first-child{
+  position:sticky!important;
+  left:0!important;
+  top:0!important;
+  z-index:140!important;
+  background:var(--s2)!important;
+  min-width:340px!important;
+  width:340px!important;
+  max-width:340px!important;
+  box-shadow:10px 0 16px rgba(7,10,17,.95), 0 2px 0 var(--bd2)!important;
+}
+#content.dre-content .dre-table-shell .dre-t tbody td{
+  position:relative;
+  z-index:1;
+}
+#content.dre-content .dre-table-shell .dre-t tbody td:first-child{
+  position:sticky!important;
+  left:0!important;
+  z-index:80!important;
+  min-width:340px!important;
+  width:340px!important;
+  max-width:340px!important;
+  background:var(--s1)!important;
+  box-shadow:10px 0 16px rgba(7,10,17,.95)!important;
+  border-right:1px solid var(--bd2)!important;
+  overflow:hidden!important;
+  white-space:normal!important;
+}
+#content.dre-content .dre-table-shell .dre-cat td:first-child{background:var(--s2)!important;z-index:82!important;color:var(--tx)!important;}
+#content.dre-content .dre-table-shell .dre-tot td:first-child{background:rgba(249,115,22,.12)!important;z-index:83!important;color:var(--acc)!important;}
+#content.dre-content .dre-table-shell .dre-hi td:first-child{background:rgba(34,197,94,.12)!important;z-index:83!important;color:var(--ok)!important;}
+#content.dre-content .dre-table-shell .dre-bk td:first-child{background:rgba(59,130,246,.12)!important;z-index:82!important;color:var(--in)!important;}
+#content.dre-content .dre-table-shell .dre-sep td:first-child{box-shadow:none!important;border-right:0!important;}
+#content.dre-content .dre-table-shell .dre-col-item{width:340px!important;}
+#content.dre-content .dre-table-shell .dre-col-mes{width:112px!important;}
+#content.dre-content .dre-table-shell .dre-col-total{width:142px!important;}
+#content.dre-content .dre-table-shell .dre-col-pct{width:82px!important;}
+#content.dre-content .dre-table-shell .dv{
+  text-align:right!important;
+  padding-left:12px!important;
+  padding-right:12px!important;
+  white-space:nowrap!important;
+}
+@media(max-width:1100px){
+  #content.dre-content .dre-table-shell .dre-t thead th:first-child,
+  #content.dre-content .dre-table-shell .dre-t tbody td:first-child{min-width:310px!important;width:310px!important;max-width:310px!important;}
+  #content.dre-content .dre-table-shell .dre-col-item{width:310px!important;}
+  #content.dre-content .dre-table-shell .dre-col-mes{width:108px!important;}
+}
+
+
+
 /* DRE-API-DESIGN-2026-06-06
    Design limpo para DRE: uma tabela única, sem coluna de descrição fixa.
    Mantém somente cabeçalho dos meses travado na rolagem vertical.
@@ -845,6 +924,186 @@ body,.app,.content,.btn,.fc,.fv,input,select,textarea,table{font-family:var(--fo
 <div id="ta"></div>
 
 <style>@keyframes spin{to{transform:rotate(360deg)}}
+
+/* DRE-API-DESIGN-2026-06-06
+   Design limpo para DRE: uma tabela única, sem coluna de descrição fixa.
+   Mantém somente cabeçalho dos meses travado na rolagem vertical.
+   Remove sobreposição de números passando por baixo dos textos. */
+#content.dre-content{
+  padding:18px 22px 26px!important;
+  overflow:auto!important;
+  background:var(--bg)!important;
+}
+#content.dre-content .dre-page{
+  width:max-content!important;
+  min-width:100%!important;
+  max-width:none!important;
+  margin:0!important;
+  display:flex!important;
+  flex-direction:column!important;
+  gap:12px!important;
+}
+#content.dre-content .dre-yearbar{
+  position:relative!important;
+  z-index:3!important;
+  margin:0 0 2px!important;
+  padding:0!important;
+  background:transparent!important;
+  border:0!important;
+}
+#content.dre-content .dre-info{
+  margin:0 0 4px 1px!important;
+  font-size:12px!important;
+  line-height:1.35!important;
+  color:var(--tx3)!important;
+}
+#content.dre-content .dre-table-shell{
+  width:max-content!important;
+  min-width:100%!important;
+  max-width:none!important;
+  overflow:visible!important;
+  isolation:auto!important;
+  background:transparent!important;
+  border:0!important;
+  border-radius:0!important;
+  box-shadow:none!important;
+}
+#content.dre-content .dre-table-shell .dre-t{
+  width:max-content!important;
+  min-width:1920px!important;
+  table-layout:fixed!important;
+  border-collapse:separate!important;
+  border-spacing:0!important;
+  background:var(--s1)!important;
+  border:1px solid var(--bd)!important;
+  border-radius:14px!important;
+  overflow:hidden!important;
+  font-variant-numeric:tabular-nums!important;
+}
+#content.dre-content .dre-table-shell .dre-col-item{width:380px!important;min-width:380px!important;max-width:380px!important;}
+#content.dre-content .dre-table-shell .dre-col-mes{width:120px!important;min-width:120px!important;max-width:120px!important;}
+#content.dre-content .dre-table-shell .dre-col-total{width:156px!important;min-width:156px!important;max-width:156px!important;}
+#content.dre-content .dre-table-shell .dre-col-pct{width:92px!important;min-width:92px!important;max-width:92px!important;}
+#content.dre-content .dre-table-shell .dre-t th,
+#content.dre-content .dre-table-shell .dre-t td{
+  padding:8px 12px!important;
+  line-height:1.28!important;
+  vertical-align:middle!important;
+  white-space:nowrap!important;
+  background-clip:padding-box!important;
+  border-bottom:1px solid rgba(148,163,184,.14)!important;
+}
+#content.dre-content .dre-table-shell .dre-t thead th{
+  position:sticky!important;
+  top:0!important;
+  z-index:30!important;
+  background:#1b2130!important;
+  color:var(--tx2)!important;
+  text-align:right!important;
+  font-size:11px!important;
+  font-weight:850!important;
+  letter-spacing:.07em!important;
+  text-transform:uppercase!important;
+  box-shadow:0 2px 0 rgba(148,163,184,.28),0 8px 14px rgba(7,10,17,.80)!important;
+}
+#content.dre-content .dre-table-shell .dre-t thead th:first-child{
+  position:sticky!important;
+  top:0!important;
+  left:auto!important;
+  z-index:31!important;
+  text-align:left!important;
+  min-width:380px!important;
+  width:380px!important;
+  max-width:380px!important;
+  background:#1b2130!important;
+  box-shadow:0 2px 0 rgba(148,163,184,.28),0 8px 14px rgba(7,10,17,.80)!important;
+}
+#content.dre-content .dre-table-shell .dre-t tbody td:first-child{
+  position:static!important;
+  left:auto!important;
+  top:auto!important;
+  z-index:auto!important;
+  min-width:380px!important;
+  width:380px!important;
+  max-width:380px!important;
+  white-space:normal!important;
+  text-align:left!important;
+  box-shadow:none!important;
+  border-right:1px solid rgba(148,163,184,.12)!important;
+}
+#content.dre-content .dre-table-shell .dre-cat td{
+  background:#161c2a!important;
+  color:var(--tx)!important;
+  font-size:13px!important;
+  font-weight:850!important;
+}
+#content.dre-content .dre-table-shell .dre-cat td:first-child{background:#161c2a!important;color:var(--tx)!important;}
+#content.dre-content .dre-table-shell .dre-sub td{
+  background:var(--s1)!important;
+  color:var(--tx2)!important;
+  font-size:12px!important;
+  font-weight:500!important;
+  padding-top:7px!important;
+  padding-bottom:7px!important;
+}
+#content.dre-content .dre-table-shell .dre-sub td:first-child{
+  padding-left:28px!important;
+  background:var(--s1)!important;
+  color:var(--tx2)!important;
+}
+#content.dre-content .dre-table-shell .dre-tot td{
+  background:rgba(249,115,22,.10)!important;
+  color:var(--acc)!important;
+  font-size:13px!important;
+  font-weight:900!important;
+  border-top:2px solid rgba(249,115,22,.25)!important;
+}
+#content.dre-content .dre-table-shell .dre-tot td:first-child{background:rgba(249,115,22,.10)!important;color:var(--acc)!important;}
+#content.dre-content .dre-table-shell .dre-hi td{
+  background:rgba(34,197,94,.10)!important;
+  color:var(--ok)!important;
+  font-size:13px!important;
+  font-weight:900!important;
+  border-top:2px solid rgba(34,197,94,.25)!important;
+}
+#content.dre-content .dre-table-shell .dre-hi td:first-child{background:rgba(34,197,94,.10)!important;color:var(--ok)!important;}
+#content.dre-content .dre-table-shell .dre-bk td{
+  background:rgba(59,130,246,.08)!important;
+  color:var(--in)!important;
+  font-size:12.5px!important;
+  font-weight:800!important;
+}
+#content.dre-content .dre-table-shell .dre-bk td:first-child{background:rgba(59,130,246,.08)!important;color:var(--in)!important;}
+#content.dre-content .dre-table-shell .dre-sep td{
+  height:8px!important;
+  padding:0!important;
+  background:var(--bg)!important;
+  border:none!important;
+}
+#content.dre-content .dre-table-shell .dv{
+  text-align:right!important;
+  font-family:'DM Mono',monospace!important;
+  font-size:12px!important;
+  font-weight:650!important;
+  letter-spacing:-.035em!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+}
+#content.dre-content .dre-table-shell th.dv{
+  font-size:11px!important;
+  letter-spacing:.06em!important;
+}
+#content.dre-content .dre-table-shell .dc{color:var(--tx2)!important;}
+@media(max-width:1200px){
+  #content.dre-content{padding:14px 16px 22px!important;}
+  #content.dre-content .dre-table-shell .dre-t{min-width:1840px!important;}
+  #content.dre-content .dre-table-shell .dre-col-item,
+  #content.dre-content .dre-table-shell .dre-t tbody td:first-child,
+  #content.dre-content .dre-table-shell .dre-t thead th:first-child{width:350px!important;min-width:350px!important;max-width:350px!important;}
+  #content.dre-content .dre-table-shell .dre-col-mes{width:116px!important;min-width:116px!important;max-width:116px!important;}
+  #content.dre-content .dre-table-shell .dre-t th,
+  #content.dre-content .dre-table-shell .dre-t td{padding:7px 10px!important;}
+}
 
 </style>
 
@@ -1152,6 +1411,7 @@ async function loadAll(){
     store.centrocusto  = ccSnap.docs.map(d=>({id:d.id,...d.data()}));
     store.patrimonio   = patSnap.docs.map(d=>({id:d.id,...d.data()}));
     store.agenda       = agSnap ? agSnap.docs.map(d=>({id:d.id,...d.data()})) : (store.agenda||[]);
+    normalizeAgendaStore();
     store.clientes_mes = {};
     cmSnap.docs.forEach(d=>{ store.clientes_mes[d.id]=d.data().count||0; });
     if(cfgSnap.docs.length) store.cfg = {...store.cfg,...cfgSnap.docs[0].data()};
@@ -1196,20 +1456,27 @@ function setupRealtimeSync(){
     }, err=>{ console.warn('Sync econômico de lançamentos offline:',err.message); setStatus('● online sem tempo real','var(--wa)'); });
   unsubListeners.push(unsub);
 
-  // agenda financeira manual
+  // agenda financeira manual em tempo real, com proteção contra duplicidade por data + origem.
   const unsubAgenda = db.collection('agenda_financeira')
     .onSnapshot(snap=>{
+      let mudou=false;
       snap.docChanges().forEach(ch=>{
         const d={id:ch.doc.id,...ch.doc.data()};
         if(ch.type==='added'||ch.type==='modified'){
           const i=store.agenda.findIndex(x=>x.id===d.id);
           if(i>=0) store.agenda[i]=d; else store.agenda.push(d);
+          mudou=true;
         } else if(ch.type==='removed'){
+          const len=store.agenda.length;
           store.agenda=store.agenda.filter(x=>x.id!==ch.doc.id);
+          if(store.agenda.length!==len) mudou=true;
         }
       });
+      if(!mudou) return;
+      normalizeAgendaStore();
       lsSave();
-      if(CM==='agenda') safeRender(CM);
+      setStatus('● '+store.lancamentos.length+' lanç. | online','var(--ok)');
+      if(['agenda','fluxocaixa','visaogeral','dashboard','auditoria'].includes(CM)) safeRender(CM);
     }, err=>{ console.warn('Agenda offline:', err.message); });
   unsubListeners.push(unsubAgenda);
 
@@ -2838,15 +3105,60 @@ function agEsc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'
 function agLancData(r){return r.data_vencimento||r.data_competencia||r.data_efetivacao||'';}
 function agSort(a,b){return (a.data||'').localeCompare(b.data||'') || (a.tipo||'').localeCompare(b.tipo||'') || (a.descricao||'').localeCompare(b.descricao||'');}
 function agSum(arr,fn){return arr.filter(fn).reduce((s,x)=>s+(+x.valor||0),0);}
+// HOTFIX_AGENDA_SYNC_DEDUP_20260606
+// Recebimento manual deve existir uma única vez por data + origem (iFood, Crédito, Débito, Pix).
+// Isso evita duplicar valores no calendário e garante que outro computador veja a alteração pelo listener do Firebase.
+function agNorm(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/\s+/g,' ');}
+function agSlug(v){return agNorm(v).replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||'recebimento';}
+function agOrigem(r){return String(r?.origem||r?.forma||r?.descricao||'').trim();}
+function agManualKey(r){
+  if(!r) return '';
+  if((r.tipo||'receber')==='pagar') return '';
+  const data=String(r.data||'').slice(0,10);
+  const origem=agNorm(agOrigem(r));
+  return data&&origem ? data+'|'+origem : '';
+}
+function agStableId(d){return 'receb_'+String(d.data||'').replace(/[^0-9]/g,'')+'_'+agSlug(d.origem||d.forma||d.descricao);}
+function agTs(r){
+  const v=r?.updated_at||r?.atualizado_em||r?.criado_em||r?.created_at||'';
+  if(v&&typeof v.toMillis==='function') return v.toMillis();
+  if(v&&typeof v.seconds==='number') return v.seconds*1000;
+  const t=Date.parse(v); return Number.isFinite(t)?t:0;
+}
+function normalizeAgendaStore(){
+  const base=store.agenda||[];
+  const manuais=new Map();
+  const outros=[];
+  base.forEach(raw=>{
+    if(!raw) return;
+    const r={...raw};
+    if((r.tipo||'receber')!=='pagar'){
+      const origem=agOrigem(r);
+      r.tipo='receber';
+      r.origem=origem;
+      r.forma=r.forma||origem;
+      r.descricao=r.descricao||origem||'Recebimento manual';
+      r.status=r.status||'Baixado';
+    }
+    const key=agManualKey(r);
+    if(key){
+      const atual=manuais.get(key);
+      if(!atual || agTs(r)>=agTs(atual)) manuais.set(key,r);
+    } else outros.push(r);
+  });
+  store.agenda=[...outros,...manuais.values()];
+  return store.agenda;
+}
 function agManualMesItems(mes=agendaMes){
+  normalizeAgendaStore();
   return (store.agenda||[]).filter(r=>(r.data||'').startsWith(mes)&&(r.tipo||'receber')!=='pagar').map(r=>({
     ...r,
     id:r.id,
     source:'manual',
     tipo:'receber',
-    descricao:r.origem||r.forma||r.descricao||'Recebimento manual',
-    forma:r.origem||r.forma||'',
-    status:'Baixado',
+    descricao:agOrigem(r)||'Recebimento manual',
+    forma:agOrigem(r)||'',
+    status:r.status||'Baixado',
     valor:+r.valor||0,
     origem:'Manual'
   })).sort(agSort);
@@ -2918,19 +3230,45 @@ window.nAgenda=function(tipo='receber',data=''){
 };
 window.eAgenda=function(id){const r=(store.agenda||[]).find(x=>x.id===id);if(!r)return;oM('Editar recebimento manual',agendaForm(r),`<button class="btn bs" onclick="cM()">Cancelar</button><button class="btn bp" onclick="svAgenda('${id}')">💾 Atualizar</button>`,true);};
 window.svAgenda=async function(id){
+  if(window.__agendaSaving){toast('Salvamento em andamento. Aguarde.','in');return;}
   const d=getAgendaD();
   if(!d.data||!d.origem||!d.valor){toast('Preencha data, origem e valor','er');return;}
-  if(id){
-    const i=store.agenda.findIndex(x=>x.id===id);
-    if(i>=0) store.agenda[i]={...store.agenda[i],...d};
-    cM(); if(CM==='auditoria') rAuditoria(); else rAgenda(); toast('Agenda atualizada! ✅','ok');
-    try{await fbSet('agenda_financeira',id,{...d});lsSave();}catch(e){lsSave();}
-  }else{
-    const nid=uid();
-    const item={id:nid,...d,criado_em:new Date().toISOString()};
-    store.agenda.push(item);agendaMes=d.data.slice(0,7);
-    cM(); if(CM==='auditoria') rAuditoria(); else rAgenda(); toast('Item manual incluído na agenda! ✅','ok');
-    try{await fbSet('agenda_financeira',nid,{...item});lsSave();}catch(e){lsSave();}
+  window.__agendaSaving=true;
+  try{
+    normalizeAgendaStore();
+    const now=new Date().toISOString();
+    if(id){
+      const i=store.agenda.findIndex(x=>x.id===id);
+      const old=i>=0?store.agenda[i]:{};
+      const item={...old,...d,id,atualizado_em:now};
+      if(i>=0) store.agenda[i]=item; else store.agenda.push(item);
+      normalizeAgendaStore();
+      cM();
+      if(CM==='auditoria') rAuditoria(); else rAgenda();
+      toast('Agenda atualizada! ✅','ok');
+      await fbSet('agenda_financeira',id,{...item});
+      lsSave();
+    }else{
+      const key=agManualKey(d);
+      const existente=(store.agenda||[]).find(x=>agManualKey(x)===key);
+      const nid=existente?.id || agStableId(d);
+      const item={...(existente||{}),id:nid,...d,criado_em:existente?.criado_em||now,atualizado_em:now};
+      const i=store.agenda.findIndex(x=>x.id===nid);
+      if(i>=0) store.agenda[i]=item; else store.agenda.push(item);
+      agendaMes=d.data.slice(0,7);
+      normalizeAgendaStore();
+      cM();
+      if(CM==='auditoria') rAuditoria(); else rAgenda();
+      toast(existente?'Recebimento manual atualizado, sem duplicar ✅':'Recebimento manual incluído ✅','ok');
+      await fbSet('agenda_financeira',nid,{...item});
+      lsSave();
+    }
+  }catch(e){
+    console.warn('Falha ao salvar agenda:',e.message);
+    lsSave();
+    toast('Salvo localmente. Firebase não confirmou agora.','in');
+  }finally{
+    window.__agendaSaving=false;
   }
 };
 window.dAgenda=function(id){
