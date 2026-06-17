@@ -1,12 +1,12 @@
 <!DOCTYPE html>
+<!-- HOTFIX_AGENDA_DEDUP_DELETE_SYNC_2026-06-17 -->
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Financeiro — Burger do Rei | HOTFIX AGENDA SYNC 2026-06-06 | HOTFIX DRE API DESIGN | HOTFIX LANCAMENTOS</title>
+<title>Financeiro — Burger do Rei | HOTFIX DRE API DESIGN 2026-06-06 | HOTFIX LANCAMENTOS 2026-06-06</title>
 <!-- HOTFIX_LANCAMENTOS_20260606_DBLCLICK_STATUS_VIEW -->
 <!-- HOTFIX_DRE_API_DESIGN_20260606 -->
-<!-- HOTFIX_AGENDA_SYNC_DEDUP_20260606 -->
 
 <!-- PWA + Favicon -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1309,6 +1309,7 @@ let unsubListeners = [];
 
 // Blindagem pós-resgate: evita re-render pesado enquanto o usuário clica/digita.
 const APP_VERSION = 'FINAL_MELHORIAS_BLINDAGEM_POS_RESGATE_FIX_TRAVAMENTO_2026-05-15';
+const AGENDA_DELETE_FIX = 'HOTFIX_AGENDA_DELETE_VISIBILITY_SYNC_2026-06-17';
 let renderTimer = null;
 let pendingRender = null;
 function modalAberto(){
@@ -1411,7 +1412,7 @@ async function loadAll(){
     store.centrocusto  = ccSnap.docs.map(d=>({id:d.id,...d.data()}));
     store.patrimonio   = patSnap.docs.map(d=>({id:d.id,...d.data()}));
     store.agenda       = agSnap ? agSnap.docs.map(d=>({id:d.id,...d.data()})) : (store.agenda||[]);
-    normalizeAgendaStore();
+    try{ normalizeAgendaStore(); }catch(_e){}
     store.clientes_mes = {};
     cmSnap.docs.forEach(d=>{ store.clientes_mes[d.id]=d.data().count||0; });
     if(cfgSnap.docs.length) store.cfg = {...store.cfg,...cfgSnap.docs[0].data()};
@@ -1456,7 +1457,7 @@ function setupRealtimeSync(){
     }, err=>{ console.warn('Sync econômico de lançamentos offline:',err.message); setStatus('● online sem tempo real','var(--wa)'); });
   unsubListeners.push(unsub);
 
-  // agenda financeira manual em tempo real, com proteção contra duplicidade por data + origem.
+  // agenda financeira manual em tempo real + deduplicação por data/origem.
   const unsubAgenda = db.collection('agenda_financeira')
     .onSnapshot(snap=>{
       let mudou=false;
@@ -1467,15 +1468,14 @@ function setupRealtimeSync(){
           if(i>=0) store.agenda[i]=d; else store.agenda.push(d);
           mudou=true;
         } else if(ch.type==='removed'){
-          const len=store.agenda.length;
+          const antes=store.agenda.length;
           store.agenda=store.agenda.filter(x=>x.id!==ch.doc.id);
-          if(store.agenda.length!==len) mudou=true;
+          if(store.agenda.length!==antes) mudou=true;
         }
       });
       if(!mudou) return;
-      normalizeAgendaStore();
+      try{ normalizeAgendaStore(); }catch(_e){}
       lsSave();
-      setStatus('● '+store.lancamentos.length+' lanç. | online','var(--ok)');
       if(['agenda','fluxocaixa','visaogeral','dashboard','auditoria'].includes(CM)) safeRender(CM);
     }, err=>{ console.warn('Agenda offline:', err.message); });
   unsubListeners.push(unsubAgenda);
@@ -3119,6 +3119,7 @@ function agManualKey(r){
   return data&&origem ? data+'|'+origem : '';
 }
 function agStableId(d){return 'receb_'+String(d.data||'').replace(/[^0-9]/g,'')+'_'+agSlug(d.origem||d.forma||d.descricao);}
+function agDuplicateManualIds(key, keepId=''){return (store.agenda||[]).filter(x=>agManualKey(x)===key && x.id && x.id!==keepId).map(x=>x.id);}
 function agTs(r){
   const v=r?.updated_at||r?.atualizado_em||r?.criado_em||r?.created_at||'';
   if(v&&typeof v.toMillis==='function') return v.toMillis();
@@ -3241,26 +3242,35 @@ window.svAgenda=async function(id){
       const i=store.agenda.findIndex(x=>x.id===id);
       const old=i>=0?store.agenda[i]:{};
       const item={...old,...d,id,atualizado_em:now};
-      if(i>=0) store.agenda[i]=item; else store.agenda.push(item);
+      const key=agManualKey(item);
+      const dupIds=agDuplicateManualIds(key,id);
+      store.agenda=(store.agenda||[]).filter(x=>!dupIds.includes(x.id));
+      const j=store.agenda.findIndex(x=>x.id===id);
+      if(j>=0) store.agenda[j]=item; else store.agenda.push(item);
       normalizeAgendaStore();
       cM();
-      if(CM==='auditoria') rAuditoria(); else rAgenda();
+      if(['agenda','fluxocaixa','visaogeral','dashboard','auditoria'].includes(CM)) safeRender(CM); else rAgenda();
       toast('Agenda atualizada! ✅','ok');
       await fbSet('agenda_financeira',id,{...item});
+      for(const did of dupIds){ await fbDel('agenda_financeira',did); }
       lsSave();
     }else{
       const key=agManualKey(d);
-      const existente=(store.agenda||[]).find(x=>agManualKey(x)===key);
+      const candidatos=(store.agenda||[]).filter(x=>agManualKey(x)===key).sort((a,b)=>agTs(b)-agTs(a));
+      const existente=candidatos[0];
       const nid=existente?.id || agStableId(d);
       const item={...(existente||{}),id:nid,...d,criado_em:existente?.criado_em||now,atualizado_em:now};
+      const dupIds=candidatos.filter(x=>x.id&&x.id!==nid).map(x=>x.id);
+      store.agenda=(store.agenda||[]).filter(x=>!dupIds.includes(x.id));
       const i=store.agenda.findIndex(x=>x.id===nid);
       if(i>=0) store.agenda[i]=item; else store.agenda.push(item);
       agendaMes=d.data.slice(0,7);
       normalizeAgendaStore();
       cM();
-      if(CM==='auditoria') rAuditoria(); else rAgenda();
+      if(['agenda','fluxocaixa','visaogeral','dashboard','auditoria'].includes(CM)) safeRender(CM); else rAgenda();
       toast(existente?'Recebimento manual atualizado, sem duplicar ✅':'Recebimento manual incluído ✅','ok');
       await fbSet('agenda_financeira',nid,{...item});
+      for(const did of dupIds){ await fbDel('agenda_financeira',did); }
       lsSave();
     }
   }catch(e){
@@ -3273,9 +3283,35 @@ window.svAgenda=async function(id){
 };
 window.dAgenda=function(id){
   const r=(store.agenda||[]).find(x=>x.id===id);if(!r)return;
-  confirm_('Excluir item manual da agenda',`Excluir ${r.descricao||'este item'} de ${fmtD(r.data)}?`,async()=>{
-    store.agenda=store.agenda.filter(x=>x.id!==id); if(CM==='auditoria') rAuditoria(); else rAgenda(); toast('Item manual excluído','ok');
-    try{await fbDel('agenda_financeira',id);lsSave();}catch(e){lsSave();}
+  const key=agManualKey(r);
+  const diaExcluido=r.data;
+  const ids=key?(store.agenda||[]).filter(x=>agManualKey(x)===key&&x.id).map(x=>x.id):[id];
+  confirm_('Excluir item manual da agenda',`Excluir ${r.descricao||r.origem||'este item'} de ${fmtD(r.data)}?${ids.length>1?' Também serão removidas '+ids.length+' duplicidades do mesmo dia/origem.':''}`,async()=>{
+    const idSet=new Set(ids);
+    store.agenda=store.agenda.filter(x=>!idSet.has(x.id));
+    try{normalizeAgendaStore();}catch(_e){}
+
+    // Atualização visual imediata: não usa safeRender aqui, porque o modal está aberto e safeRender adia a tela.
+    if(CM==='agenda') rAgenda();
+    else if(CM==='auditoria') rAuditoria();
+    else if(['fluxocaixa','visaogeral','dashboard'].includes(CM)) render(CM);
+
+    // Se o detalhe do dia estiver aberto, atualiza o próprio modal. Se não sobrar item no dia, fecha.
+    if($('mdbg')&&$('mdbg').classList.contains('op')){
+      if(agAllMesItems().some(x=>x.data===diaExcluido)) verAgendaDia(diaExcluido);
+      else cM();
+    }
+
+    toast(ids.length>1?'Item e duplicidades excluídos ✅':'Item manual excluído','ok');
+    try{
+      const apagar=new Set(ids);
+      if(fbOk&&key&&diaExcluido){
+        const snap=await db.collection('agenda_financeira').where('data','==',diaExcluido).get();
+        snap.docs.forEach(doc=>{const d={id:doc.id,...doc.data()}; if(agManualKey(d)===key) apagar.add(doc.id);});
+      }
+      for(const did of apagar){await fbDel('agenda_financeira',did);}
+      lsSave();
+    }catch(e){lsSave();}
   });
 };
 window.baixaAgenda=function(id){
@@ -3316,19 +3352,19 @@ window.baixaAgendaDia=function(data){
   });
 };
 window.limparAgendaMesBaixados=function(){
-  const itens=agManualMesItems().filter(x=>x.status==='Baixado');
+  const itens=(store.agenda||[]).filter(x=>(x.data||'').startsWith(agendaMes)&&(x.tipo||'receber')!=='pagar'&&(x.status||'Baixado')==='Baixado');
   if(!itens.length){toast('Não há baixados manuais para apagar neste mês','in');return;}
   confirm_('Apagar baixados manuais do mês',`Vai apagar ${itens.length} item(ns) manual(is) já baixado(s) de ${agMesExtenso(agendaMes)}. Lançamentos automáticos continuam preservados.`,async()=>{
-    const ids=new Set(itens.map(x=>x.id));store.agenda=store.agenda.filter(x=>!ids.has(x.id));rAgenda();toast('Baixados manuais apagados ✅','ok');
-    try{for(const x of itens){await fbDel('agenda_financeira',x.id);}lsSave();}catch(e){lsSave();}
+    const ids=new Set(itens.map(x=>x.id).filter(Boolean));store.agenda=store.agenda.filter(x=>!ids.has(x.id));rAgenda();toast('Baixados manuais apagados ✅','ok');
+    try{for(const x of itens){if(x.id)await fbDel('agenda_financeira',x.id);}lsSave();}catch(e){lsSave();}
   });
 };
 window.excluirAgendaMes=function(){
-  const itens=agManualMesItems();
+  const itens=(store.agenda||[]).filter(x=>(x.data||'').startsWith(agendaMes)&&(x.tipo||'receber')!=='pagar');
   if(!itens.length){toast('Mês sem itens manuais','in');return;}
   confirm_('Excluir agenda manual do mês',`Vai apagar TODOS os ${itens.length} item(ns) manuais de ${agMesExtenso(agendaMes)}. Os pagamentos automáticos dos lançamentos não serão apagados.`,async()=>{
-    const ids=new Set(itens.map(x=>x.id));store.agenda=store.agenda.filter(x=>!ids.has(x.id));rAgenda();toast('Mês manual apagado da agenda','ok');
-    try{for(const x of itens){await fbDel('agenda_financeira',x.id);}lsSave();}catch(e){lsSave();}
+    const ids=new Set(itens.map(x=>x.id).filter(Boolean));store.agenda=store.agenda.filter(x=>!ids.has(x.id));rAgenda();toast('Mês manual apagado da agenda','ok');
+    try{for(const x of itens){if(x.id)await fbDel('agenda_financeira',x.id);}lsSave();}catch(e){lsSave();}
   });
 };
 
