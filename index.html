@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- BUILD_AGENDA_UNICA_FINAL_V3_2026_06_24_1258 -->
+<!-- BUILD_AGENDA_RAIZ_UNICA_SEM_DUPLICAR_2026_06_24_1319 -->
 <!-- BUILD_AGENDA_DEDUP_VISUAL_FIREBASE_2026_06_24_1605 -->
 <!-- HOTFIX_AGENDA_DEDUP_VISUAL_FIREBASE_2026-06-24 -->
 <!-- HOTFIX_AGENDA_UNIQUE_KEY_DEFINITIVO_2026-06-24 -->
@@ -11,9 +11,9 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="financeiro-build" content="BUILD_AGENDA_UNICA_FINAL_V3_2026_06_24_1258">
+<meta name="financeiro-build" content="BUILD_AGENDA_RAIZ_UNICA_SEM_DUPLICAR_2026_06_24_1319">
 <script>
-window.__BUILD_ID='BUILD_AGENDA_UNICA_FINAL_V3_2026_06_24_1258';
+window.__BUILD_ID='BUILD_AGENDA_RAIZ_UNICA_SEM_DUPLICAR_2026_06_24_1319';
 (function(){
   try{
     if('serviceWorker' in navigator){
@@ -26,7 +26,7 @@ window.__BUILD_ID='BUILD_AGENDA_UNICA_FINAL_V3_2026_06_24_1258';
 })();
 </script>
 
-<title>Financeiro — Burger do Rei | BUILD_AGENDA_DEDUP_VISUAL_FIREBASE_2026_06_24_1605</title>
+<title>Financeiro — Burger do Rei | BUILD_AGENDA_RAIZ_UNICA_SEM_DUPLICAR_2026_06_24_1319</title>
 <!-- HOTFIX_LANCAMENTOS_20260606_DBLCLICK_STATUS_VIEW -->
 <!-- HOTFIX_DRE_API_DESIGN_20260606 -->
 <!-- HOTFIX_AGENDA_UNIQUE_KEY_DEFINITIVO_2026-06-24 -->
@@ -1331,7 +1331,7 @@ let fbOk = false;
 let unsubListeners = [];
 
 // Blindagem pós-resgate: evita re-render pesado enquanto o usuário clica/digita.
-const APP_VERSION = 'BUILD_AGENDA_UNICA_FINAL_V3_2026_06_24_1258';
+const APP_VERSION = 'BUILD_AGENDA_RAIZ_UNICA_SEM_DUPLICAR_2026_06_24_1319';
 let renderTimer = null;
 let pendingRender = null;
 function modalAberto(){
@@ -3258,10 +3258,78 @@ function agDedupManualList(list, mes=''){
   if(dupIds.length) window.__agendaDuplicateIdsToDelete=[...new Set([...(window.__agendaDuplicateIdsToDelete||[]),...dupIds])];
   return saida;
 }
+// BUILD_AGENDA_RAIZ_UNICA_SEM_DUPLICAR_2026_06_24_1319
+// Correção raiz: toda tela, total, exclusão e salvamento passam por uma chave visual única DATA+ORIGEM.
+// Isso impede que o segundo/terceiro recebimento do dia duplique os anteriores na visualização.
+function agUniqueReceiptKey(x){
+  if(!x || (x.tipo||'receber')==='pagar') return '';
+  const data=agDateKey(x.data||x.data_recebimento||x.data_vencimento||x.dt);
+  const origem=agCanonOrigem(x)||agOrigem(x)||x.descricao||x.forma||x.origem||'Recebimento';
+  const origemKey=agSlug(agCanonOrigem(origem)||origem);
+  return data&&origemKey ? data+'|'+origemKey : '';
+}
+function agNewestFirst(a,b){
+  const at=agTs(a), bt=agTs(b);
+  if(at!==bt) return bt-at;
+  const aid=String(a.id||''), bid=String(b.id||'');
+  const ast=aid===agStableId(a)?1:0, bst=bid===agStableId(b)?1:0;
+  if(ast!==bst) return bst-ast;
+  return (b.__agendaIdx||0)-(a.__agendaIdx||0);
+}
+function agRecebimentosUnicos(list,mes=''){
+  const grupos=new Map();
+  const outros=[];
+  (list||[]).forEach((raw,idx)=>{
+    if(!raw) return;
+    if((raw.tipo||'receber')==='pagar'){outros.push(raw);return;}
+    const r=agPrepareManual(raw);
+    const data=agDateKey(r.data||raw.data);
+    if(mes && !String(data||'').startsWith(mes)) return;
+    r.data=data||r.data;
+    const key=agUniqueReceiptKey(r);
+    if(!key){outros.push(r);return;}
+    r.manual_key=key;
+    r.__agendaIdx=idx;
+    if(!grupos.has(key)) grupos.set(key,[]);
+    grupos.get(key).push(r);
+  });
+  const saida=[...outros];
+  const dupIds=[];
+  grupos.forEach((rows,key)=>{
+    rows.sort(agNewestFirst);
+    const keep={...rows[0]};
+    const origem=agCanonOrigem(keep)||agOrigem(keep)||'Recebimento manual';
+    keep.id=keep.id||agStableId(keep);
+    keep.manual_key=key;
+    keep.tipo='receber';
+    keep.origem_canonica=origem;
+    keep.origem=origem;
+    keep.forma=origem;
+    keep.descricao=origem;
+    keep.valor=+keep.valor||0;
+    keep.status=keep.status||'Baixado';
+    keep.__dup_ids=rows.map(x=>x.id).filter(id=>id&&id!==keep.id);
+    keep.__all_ids=rows.map(x=>x.id).filter(Boolean);
+    rows.slice(1).forEach(x=>{if(x.id&&x.id!==keep.id) dupIds.push(x.id);});
+    delete keep.__agendaIdx;
+    saida.push(keep);
+  });
+  if(dupIds.length) window.__agendaDuplicateIdsToDelete=[...new Set([...(window.__agendaDuplicateIdsToDelete||[]),...dupIds])];
+  return saida;
+}
+function agUnificarItensVisiveis(items){
+  const manuais=[];
+  const outros=[];
+  (items||[]).forEach(x=>{
+    if(x && x.tipo!=='pagar' && x.source!=='lancamento') manuais.push(x);
+    else outros.push(x);
+  });
+  return [...agRecebimentosUnicos(manuais,''),...outros].sort(agSort);
+}
 function normalizeAgendaStore(){
   const base=store.agenda||[];
   const outros=base.filter(raw=>(raw?.tipo||'receber')==='pagar');
-  const manuais=agDedupManualList(base,'');
+  const manuais=agRecebimentosUnicos(base.filter(raw=>(raw?.tipo||'receber')!=='pagar'),'');
   store.agenda=[...outros,...manuais];
   return store.agenda;
 }
@@ -3299,8 +3367,8 @@ async function agPersistUniqueManual(raw, oldId=''){
   item.id=stableId;
   item.manual_key=agManualKey(item);
   const key=item.manual_key;
-  const localIds=new Set((store.agenda||[]).filter(x=>x.id && x.id!==stableId && (x.id===oldId || agManualKey(x)===key)).map(x=>x.id));
-  store.agenda=(store.agenda||[]).filter(x=>x.id!==stableId && !localIds.has(x.id) && agManualKey(x)!==key);
+  const localIds=new Set((store.agenda||[]).filter(x=>x.id && x.id!==stableId && (x.id===oldId || agManualKey(x)===key || agUniqueReceiptKey(x)===key)).map(x=>x.id));
+  store.agenda=(store.agenda||[]).filter(x=>x.id!==stableId && !localIds.has(x.id) && agManualKey(x)!==key && agUniqueReceiptKey(x)!==key);
   store.agenda.push(item);
   normalizeAgendaStore();
   lsSave();
@@ -3315,17 +3383,21 @@ async function agPersistUniqueManual(raw, oldId=''){
 function agManualMesItems(mes=agendaMes){
   normalizeAgendaStore();
   agScheduleFirebaseCleanup();
-  return agDedupManualList(store.agenda||[],mes).map(r=>({
-    ...r,
-    id:r.id,
-    source:'manual',
-    tipo:'receber',
-    descricao:agOrigem(r)||'Recebimento manual',
-    forma:agOrigem(r)||'',
-    status:r.status||'Baixado',
-    valor:+r.valor||0,
-    origem:'Manual'
-  })).sort(agSort);
+  return agRecebimentosUnicos(store.agenda||[],mes).map(r=>{
+    const origem=agCanonOrigem(r)||agOrigem(r)||'Recebimento manual';
+    return {
+      ...r,
+      id:r.id,
+      manual_key:agUniqueReceiptKey(r)||r.manual_key,
+      source:'manual',
+      tipo:'receber',
+      descricao:origem,
+      forma:origem,
+      status:r.status||'Baixado',
+      valor:+r.valor||0,
+      origem:'Manual'
+    };
+  }).sort(agSort);
 }
 function agLancMesItems(mes=agendaMes){
   return (store.lancamentos||[]).filter(r=>r.rec_desp!=='Contas a receber'&&agLancData(r).startsWith(mes)).map(r=>({
@@ -3345,7 +3417,7 @@ function agLancMesItems(mes=agendaMes){
     origem:'Automático · Lançamentos'
   })).filter(x=>x.data).sort(agSort);
 }
-function agAllMesItems(mes=agendaMes){return [...agManualMesItems(mes),...agLancMesItems(mes)].sort(agSort);}
+function agAllMesItems(mes=agendaMes){return agUnificarItensVisiveis([...agManualMesItems(mes),...agLancMesItems(mes)]).sort(agSort);}
 function agMesItems(){const all=agAllMesItems();return agHideBaixados?all.filter(x=>x.status!=='Baixado'):all;}
 window.agSetMes=function(delta){agendaMes=agAddMes(agendaMes,delta);rAgenda();};
 window.agHoje=function(){agendaMes=today().slice(0,7);rAgenda();};
@@ -3425,9 +3497,9 @@ window.dAgenda=function(id,keyArg=''){
   const item=agPrepareManual(r||{manual_key:keyArg,data:(keyArg||'').split('|')[0],descricao:(keyArg||'').split('|')[1]});
   const dia=item.data || (keyArg||'').split('|')[0];
   const key=keyArg||agManualKey(item);
-  const ids=key?(store.agenda||[]).filter(x=>agManualKey(x)===key&&x.id).map(x=>x.id):[id].filter(Boolean);
+  const ids=key?(store.agenda||[]).filter(x=>(agManualKey(x)===key||agUniqueReceiptKey(x)===key)&&x.id).map(x=>x.id):[id].filter(Boolean);
   confirm_('Excluir recebimento manual',`Excluir ${item.descricao||'este recebimento'} de ${fmtD(dia)}?${ids.length>1?' Também serão removidas '+ids.length+' duplicidades do mesmo dia/origem.':''}`,async()=>{
-    store.agenda=(store.agenda||[]).filter(x=>agManualKey(x)!==key && !ids.includes(x.id));
+    store.agenda=(store.agenda||[]).filter(x=>agManualKey(x)!==key && agUniqueReceiptKey(x)!==key && !ids.includes(x.id));
     normalizeAgendaStore();
     lsSave();
     const restantes=agAllMesItems().filter(x=>x.data===dia).sort(agSort);
@@ -3525,7 +3597,7 @@ function agSection(title,sub,items,emptyIcon='📭'){
 window.verAgendaDia=function(data){
   normalizeAgendaStore();
   agScheduleFirebaseCleanup();
-  const itens=agAllMesItems().filter(x=>x.data===data).sort(agSort);
+  const itens=agUnificarItensVisiveis(agAllMesItems().filter(x=>x.data===data)).sort(agSort);
   const rec=agSum(itens,x=>x.tipo!=='pagar');
   const pag=agSum(itens,x=>x.tipo==='pagar');
   const pago=agSum(itens,x=>x.tipo==='pagar'&&x.status==='Baixado');
@@ -3697,5 +3769,7 @@ window.render=function(m){
 </script>
 
 <!-- BUILD_AGENDA_DEDUP_VISUAL_FIREBASE_2026_06_24_1605_END -->
+
+<!-- BUILD_AGENDA_RAIZ_UNICA_SEM_DUPLICAR_2026_06_24_1319_END -->
 </body>
 </html>
