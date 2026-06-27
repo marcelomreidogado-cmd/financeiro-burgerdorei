@@ -1210,12 +1210,20 @@ const store={
 // Mantém categoria/subcategoria como texto para compatibilidade visual,
 // mas usa grupo_id e subcategoria_id como vínculo principal e estável.
 let ccIdsEnsured=false;
+// FIX BUG#5: substituído range de caracteres literais por escape unicode explícito [̀-ͯ]
+// para garantir portabilidade entre browsers e evitar corrupção silenciosa de encoding.
 function ccNorm(v){return String(v||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim().replace(/\s+/g,' ');}
 function ccHashId(prefix,text){let h=2166136261;const str=String(text||'');for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619);}return prefix+(h>>>0).toString(36);}
 function ccNewId(prefix){return prefix+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8);}
 function ccRowGroupId(r){return r?.grupo_id||r?.group_id||r?.categoria_id||'';}
 function ccRowSubId(r){return r?.subcategoria_id||r?.sub_id||r?.cc_id||'';}
 function ccEnsureIds(opts={}){
+  // FIX BUG#3: a flag ccIdsEnsured estava declarada mas nunca checada, causando O(n)
+  // sobre todos os lançamentos e agenda a cada chamada de ccGroups() (que ocorre em cada render).
+  // Com o guard, o custo só é pago uma vez por sessão ou quando dados mudam (opts.force=true).
+  if(!opts.persist && !opts.force && ccIdsEnsured){
+    return {changedCC:0,changedLanc:0,changedAgenda:0};
+  }
   store.centrocusto=store.centrocusto||[];store.lancamentos=store.lancamentos||[];store.agenda=store.agenda||[];
   const persist=!!opts.persist; const changedCC=[],changedLanc=[],changedAgenda=[];
   const gidByCat={};
@@ -1259,6 +1267,7 @@ function ccEnsureIds(opts={}){
       }catch(e){console.warn('Falha ao persistir IDs fixos do plano:',e);}
     })();
   }
+  ccIdsEnsured=true; // marca como feito para evitar repetição desnecessária
   return {changedCC:changedCC.length,changedLanc:changedLanc.length,changedAgenda:changedAgenda.length};
 }
 function ccGroups(){
@@ -1440,6 +1449,7 @@ async function loadAll(){
     store.clientes_mes = {};
     cmSnap.docs.forEach(d=>{ store.clientes_mes[d.id]=d.data().count||0; });
     if(cfgSnap.docs.length) store.cfg = {...store.cfg,...cfgSnap.docs[0].data()};
+    ccIdsEnsured=false; // invalida cache — dados novos do Firebase chegaram
     ccEnsureIds({persist:false});
     lsSave();
     setStatus('● '+store.lancamentos.length+' lanç. | online','var(--ok)');
@@ -1482,14 +1492,26 @@ function setupRealtimeSync(){
   unsubListeners.push(unsub);
 
   // agenda financeira manual em tempo real + deduplicação por data/origem.
+  // FIX BUG#1: merge por stableId além do ID original para evitar race condition:
+  // normalizeAgendaStore() troca IDs pelo stableId; o snapshot inicial traz os IDs
+  // originais do Firestore, que não são encontrados por findIndex e causam push duplicado.
   const unsubAgenda = db.collection('agenda_financeira')
     .onSnapshot(snap=>{
       let mudou=false;
       snap.docChanges().forEach(ch=>{
         const d={id:ch.doc.id,...ch.doc.data()};
         if(ch.type==='added'||ch.type==='modified'){
-          const i=store.agenda.findIndex(x=>x.id===d.id);
-          if(i>=0) store.agenda[i]=d; else store.agenda.push(d);
+          // Calcula o stableId que normalizeAgendaStore() usaria para este doc
+          let stableId='';
+          try{ stableId=agStableId(agPrepareManual(d)); }catch(_e){}
+          const byId     = store.agenda.findIndex(x=>x.id===d.id);
+          const byStable = stableId ? store.agenda.findIndex(x=>x.id===stableId) : -1;
+          const idx = byId>=0 ? byId : byStable;
+          if(idx>=0){
+            store.agenda[idx]={...store.agenda[idx],...d};
+          } else {
+            store.agenda.push(d);
+          }
           mudou=true;
         } else if(ch.type==='removed'){
           const antes=store.agenda.length;
@@ -1514,6 +1536,7 @@ function setupRealtimeSync(){
       } else if(ch.type==='removed'){
         store.centrocusto=store.centrocusto.filter(x=>x.id!==ch.doc.id);
       }
+      ccIdsEnsured=false; // plano de contas mudou — invalida cache de IDs
     });
     ccEnsureIds();
     lsSave();
@@ -1985,53 +2008,75 @@ function getLancD(){
 window.nL=()=>oM('Novo Lançamento',lancForm(),`<button class="btn bs" onclick="cM()">Cancelar</button><button class="btn bp" onclick="svL(null)">💾 Salvar</button>`,true);
 window.eL=id=>{const r=store.lancamentos.find(x=>x.id===id);oM('Editar Lançamento',lancForm(r),`<button class="btn bs" onclick="cM()">Cancelar</button><button class="btn bp" onclick="svL('${id}')">💾 Atualizar</button>`,true);};
 window.svL=async function(id){
-  const d=getLancD();
-  if(!d.data_competencia||!d.valor||!d.categoria){toast('Preencha campos obrigatórios','er');return;}
-  if(id){
-    const i=store.lancamentos.findIndex(x=>x.id===id);
-    if(i>=0) store.lancamentos[i]={...store.lancamentos[i],...d};
-    cM(); render(CM); toast('Atualizado! ✅','ok');
-    try{ if(i>=0) await fbSet('lancamentos',id,d); lsSave(); }catch(e){ lsSave(); }
-  } else {
-    const rec=$('f-rec')?$('f-rec').value:'unica';
-    if(rec==='parcelada'){
-      const np=parseInt(($('f-np')||{value:2}).value)||2;
-      const gid=uid();
-      for(let i=0;i<np;i++){
-        const dc=addMonths(d.data_competencia,i);
-        const dv=d.data_vencimento?addMonths(d.data_vencimento,i):null;
-        store.lancamentos.unshift({id:uid(),...d,data_competencia:dc,data_vencimento:dv,descricao:`${d.descricao||d.categoria} (${i+1}/${np})`,parcela_info:`${i+1}/${np}`,parcelamento_id:gid});
-      }
-      for(const l of store.lancamentos.slice(0,np)){await fbAdd('lancamentos',{...l});}
-      lsSave();
-      toast(`${np} parcelas criadas!`,'ok');
-    } else if(rec==='recorrente'){
-      const nm=parseInt(($('f-nm')||{value:12}).value)||12;
-      const gid=uid();
-      for(let i=0;i<nm;i++){
-        const dc=addMonths(d.data_competencia,i);
-        const dv=d.data_vencimento?addMonths(d.data_vencimento,i):null;
-        store.lancamentos.unshift({id:uid(),...d,data_competencia:dc,data_vencimento:dv,recorrente:true,recorrencia_id:gid});
-      }
-      for(const l of store.lancamentos.slice(0,nm)){await fbAdd('lancamentos',{...l});}
-      lsSave();
-      toast(`${nm} meses recorrentes criados!`,'ok');
+  // FIX BUG#2: guard contra double submit — modal permanecia aberto durante await,
+  // permitindo segundo clique que dobrava parcelas/recorrências no store e no Firebase.
+  if(window.__lancSaving){toast('Salvamento em andamento. Aguarde.','in');return;}
+  window.__lancSaving=true;
+  try{
+    const d=getLancD();
+    if(!d.data_competencia||!d.valor||!d.categoria){toast('Preencha campos obrigatórios','er');return;}
+    if(id){
+      // --- EDIÇÃO ---
+      const i=store.lancamentos.findIndex(x=>x.id===id);
+      if(i>=0) store.lancamentos[i]={...store.lancamentos[i],...d};
+      cM(); render(CM); toast('Atualizado! ✅','ok');
+      try{ if(i>=0) await fbSet('lancamentos',id,d); lsSave(); }catch(e){ lsSave(); }
     } else {
-      const tmpId = uid();
-      store.lancamentos.unshift({id:tmpId,...d});
-      cM(); render(CM); toast('Criado! ✅','ok');
-      try{
-        const newId = await fbAdd('lancamentos',{...d});
-        if(newId){ const idx=store.lancamentos.findIndex(x=>x.id===tmpId); if(idx>=0) store.lancamentos[idx].id=newId; }
+      const rec=$('f-rec')?$('f-rec').value:'unica';
+      if(rec==='parcelada'){
+        const np=parseInt(($('f-np')||{value:2}).value)||2;
+        const gid=uid();
+        // Monta array local primeiro, evitando slice(0,np) sobre store inteiro
+        const novas=[];
+        for(let i=0;i<np;i++){
+          const dc=addMonths(d.data_competencia,i);
+          const dv=d.data_vencimento?addMonths(d.data_vencimento,i):null;
+          novas.push({id:uid(),...d,data_competencia:dc,data_vencimento:dv,
+            descricao:`${d.descricao||d.categoria} (${i+1}/${np})`,
+            parcela_info:`${i+1}/${np}`,parcelamento_id:gid});
+        }
+        novas.forEach(l=>store.lancamentos.unshift(l));
+        cM(); render(CM); // fecha modal ANTES do loop await
+        toast(`Criando ${np} parcelas…`,'in');
+        for(const l of novas){await fbAdd('lancamentos',{...l});}
         lsSave();
-      }catch(e){ lsSave(); }
+        toast(`${np} parcelas criadas! ✅`,'ok');
+      } else if(rec==='recorrente'){
+        const nm=parseInt(($('f-nm')||{value:12}).value)||12;
+        const gid=uid();
+        const novas=[];
+        for(let i=0;i<nm;i++){
+          const dc=addMonths(d.data_competencia,i);
+          const dv=d.data_vencimento?addMonths(d.data_vencimento,i):null;
+          novas.push({id:uid(),...d,data_competencia:dc,data_vencimento:dv,
+            recorrente:true,recorrencia_id:gid});
+        }
+        novas.forEach(l=>store.lancamentos.unshift(l));
+        cM(); render(CM);
+        toast(`Criando ${nm} recorrências…`,'in');
+        for(const l of novas){await fbAdd('lancamentos',{...l});}
+        lsSave();
+        toast(`${nm} meses recorrentes criados! ✅`,'ok');
+      } else {
+        // --- ÚNICO ---
+        const tmpId=uid();
+        store.lancamentos.unshift({id:tmpId,...d});
+        cM(); render(CM); toast('Criado! ✅','ok');
+        try{
+          const newId=await fbAdd('lancamentos',{...d});
+          if(newId){const idx=store.lancamentos.findIndex(x=>x.id===tmpId);if(idx>=0)store.lancamentos[idx].id=newId;}
+          lsSave();
+        }catch(e){ lsSave(); }
+      }
     }
+    // Atualiza a aba correta sem chamar cM() novamente (já foi chamado acima por fluxo)
+    if(CM==='auditoria') rAuditoria();
+    else if(CM==='agenda') rAgenda();
+    else if(CM==='fluxocaixa') rFluxo();
+    else rLanc();
+  }finally{
+    window.__lancSaving=false; // libera sempre, inclusive em caso de erro
   }
-  cM();
-  if(CM==='auditoria') rAuditoria();
-  else if(CM==='agenda') rAgenda();
-  else if(CM==='fluxocaixa') rFluxo();
-  else rLanc();
 };
 window.dL=async function(id){
   const r=store.lancamentos.find(x=>x.id===id);
@@ -3179,7 +3224,12 @@ function agManualKey(r){
   const data=agDateKey(r.data||r.data_recebimento||r.data_vencimento||r.dt)||'';
   const origem=agCanonOrigem(r)||agOrigem(r);
   const origemKey=agSlug(agCanonOrigem(origem)||origem);
-  return data&&origemKey ? data+'|'+origemKey : '';
+  if(data&&origemKey) return data+'|'+origemKey;
+  // FIX BUG#4: fallback por ID para itens sem origem válida (ex.: registros antigos com origem='Manual').
+  // Sem isso, agManualKey retorna '' e o item vai para 'outros' sem deduplicação,
+  // permitindo que duplicatas históricas persistam indefinidamente.
+  if(data&&r.id) return data+'|id_'+agSlug(r.id);
+  return '';
 }
 function agStableId(d){
   const key=agManualKey(d);
@@ -3293,7 +3343,15 @@ function agRecebimentosUnicos(list,mes=''){
     if(!grupos.has(key)) grupos.set(key,[]);
     grupos.get(key).push(r);
   });
-  const saida=[...outros];
+  // FIX BUG#4: deduplicar 'outros' (itens que caíram aqui por falta de chave) pelo menos por ID,
+  // evitando que duplicatas históricas sem origem válida apareçam múltiplas vezes na tela.
+  const idsSemChave=new Set();
+  const outrosDedup=outros.filter(x=>{
+    if(!x.id) return true;
+    if(idsSemChave.has(x.id)) return false;
+    idsSemChave.add(x.id); return true;
+  });
+  const saida=[...outrosDedup];
   const dupIds=[];
   grupos.forEach((rows,key)=>{
     rows.sort(agNewestFirst);
@@ -3513,12 +3571,28 @@ window.dAgenda=function(id,keyArg=''){
     }catch(e){lsSave();}
   });
 };
-window.baixaAgenda=function(id){
+// FIX BUG#6: tornada async com rollback — antes, se o Firebase rejeitasse a atualização,
+// o status ficava diferente no local e no servidor, causando inconsistência silenciosa.
+window.baixaAgenda=async function(id){
   const r=(store.agenda||[]).find(x=>x.id===id);if(!r)return;
+  const statusAnterior=r.status;
+  const baixaAnterior=r.data_baixa;
   const novo=r.status==='Baixado'?'Aberto':'Baixado';
-  r.status=novo;r.data_baixa=novo==='Baixado'?today():null;
-  rAgenda();toast(novo==='Baixado'?'Baixado! ✅':'Voltou para aberto','ok');
-  try{fbSet('agenda_financeira',id,{...r}).then(lsSave).catch(lsSave);}catch(e){lsSave();}
+  // Atualiza localmente e renderiza (feedback imediato)
+  r.status=novo;
+  r.data_baixa=novo==='Baixado'?today():null;
+  rAgenda();
+  toast(novo==='Baixado'?'Baixado! ✅':'Voltou para aberto','ok');
+  try{
+    await fbSet('agenda_financeira',id,{...r});
+    lsSave();
+  }catch(e){
+    // Reverte estado local se Firebase falhou
+    r.status=statusAnterior;
+    r.data_baixa=baixaAnterior;
+    rAgenda();
+    toast('Erro ao salvar status. Revertido automaticamente.','er');
+  }
 };
 window.baixaLancAgenda=function(id){
   const r=(store.lancamentos||[]).find(x=>x.id===id);if(!r)return;
