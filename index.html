@@ -942,7 +942,7 @@ body,.app,.content,.btn,.fc,.fv,input,select,textarea,table{font-family:var(--fo
 </div></div>
 <div id="cfbg"><div id="cfbox">
   <h3 id="cft">Confirmar</h3><p id="cfm">Esta ação não pode ser desfeita.</p>
-  <div class="cfb"><button class="btn bs" onclick="cCF()">Cancelar</button><button class="btn bd2" id="cfok">Confirmar</button></div>
+  <div class="cfb"><button class="btn bs" onclick="cCF()">Cancelar</button><button class="btn bp" id="cfok2" style="display:none">Só este</button><button class="btn bd2" id="cfok">Confirmar</button></div>
 </div></div>
 <div id="ta"></div>
 
@@ -1172,8 +1172,20 @@ function toast(msg,tp='in'){
   e.innerHTML=`<span>${{ok:'✅',er:'❌',in:'ℹ️'}[tp]||'ℹ️'}</span><span>${msg}</span>`;
   $('ta').appendChild(e);setTimeout(()=>{e.classList.add('rem');setTimeout(()=>e.remove(),200)},3000);
 }
-function confirm_(t,m,fn){$('cft').textContent=t;$('cfm').textContent=m;$('cfbg').classList.add('op');$('cfok').onclick=()=>{cCF();fn();};}
-window.cCF=()=>$('cfbg').classList.remove('op');
+function confirm_(t,m,fn){
+  $('cft').textContent=t;$('cfm').innerHTML=m;$('cfbg').classList.add('op');
+  const b2=$('cfok2');if(b2)b2.style.display='none';
+  $('cfok').textContent='Confirmar';$('cfok').onclick=()=>{cCF();fn();};
+}
+// Dialog com 3 botões: Cancelar | Só este (fnUm) | Excluir todos (fnTodos)
+function confirm3_(t,m,fnUm,fnTodos,lblTodos){
+  $('cft').textContent=t;$('cfm').innerHTML=m;$('cfbg').classList.add('op');
+  const b2=$('cfok2');b2.style.display='inline-flex';b2.textContent='Só este';
+  b2.onclick=()=>{cCF();fnUm();};
+  $('cfok').textContent=lblTodos||'Excluir todos';
+  $('cfok').onclick=()=>{cCF();fnTodos();};
+}
+window.cCF=()=>{$('cfbg').classList.remove('op');const b2=$('cfok2');if(b2)b2.style.display='none';};
 function oM(t,body,ft,lg=false){$('mdtit').textContent=t;$('mdbody').innerHTML=body;$('mdft').innerHTML=ft||'';$('mdbox').className='mo'+(lg?' mo-lg':'');$('mdbg').classList.add('op');}
 window.cM=()=>{$('mdbg').classList.remove('op');setTimeout(()=>{if(typeof flushPendingRender==='function')flushPendingRender();},60);}
 $('mdbg').addEventListener('click',e=>{if(e.target===$('mdbg'))cM();});
@@ -1477,8 +1489,24 @@ function setupRealtimeSync(){
         const d={id:ch.doc.id,...ch.doc.data()};
         if(ch.type==='added'||ch.type==='modified'){
           const i=store.lancamentos.findIndex(x=>x.id===d.id);
-          if(i>=0) store.lancamentos[i]=d; else store.lancamentos.unshift(d);
-          mudou=true;
+          if(i>=0){
+            store.lancamentos[i]=d;
+            mudou=true;
+          } else {
+            // FIX: evita duplicação por race condition com fbAdd otimista.
+            // IDs locais temporários começam com 'u' (função uid()).
+            // Tenta casar por fingerprint antes de unshift.
+            const fingerIdx=store.lancamentos.findIndex(x=>
+              typeof x.id==='string' && x.id.startsWith('u') &&
+              x.data_competencia===d.data_competencia &&
+              String(x.valor)===String(d.valor) &&
+              x.categoria_id===d.categoria_id &&
+              x.rec_desp===d.rec_desp
+            );
+            if(fingerIdx>=0) store.lancamentos[fingerIdx]=d;
+            else store.lancamentos.unshift(d);
+            mudou=true;
+          }
         } else if(ch.type==='removed'){
           store.lancamentos=store.lancamentos.filter(x=>x.id!==ch.doc.id);
           mudou=true;
@@ -2027,18 +2055,23 @@ window.svL=async function(id){
         const np=parseInt(($('f-np')||{value:2}).value)||2;
         const gid=uid();
         // Monta array local primeiro, evitando slice(0,np) sobre store inteiro
+        const valParc=+(d.valor/np).toFixed(2); // FIX: divide valor por parcela
         const novas=[];
         for(let i=0;i<np;i++){
           const dc=addMonths(d.data_competencia,i);
           const dv=d.data_vencimento?addMonths(d.data_vencimento,i):null;
-          novas.push({id:uid(),...d,data_competencia:dc,data_vencimento:dv,
+          novas.push({id:uid(),...d,valor:valParc,data_competencia:dc,data_vencimento:dv,
             descricao:`${d.descricao||d.categoria} (${i+1}/${np})`,
             parcela_info:`${i+1}/${np}`,parcelamento_id:gid});
         }
         novas.forEach(l=>store.lancamentos.unshift(l));
         cM(); render(CM); // fecha modal ANTES do loop await
         toast(`Criando ${np} parcelas…`,'in');
+        const tmpIdsParc=new Set(novas.map(l=>l.id));
         for(const l of novas){await fbAdd('lancamentos',{...l});}
+        // FIX: remove ghosts de tmpId que não foram substituídos pelo fingerprint
+        store.lancamentos=store.lancamentos.filter(x=>!tmpIdsParc.has(x.id));
+        store.lancamentos=[...new Map(store.lancamentos.map(x=>[x.id,x])).values()];
         lsSave();
         toast(`${np} parcelas criadas! ✅`,'ok');
       } else if(rec==='recorrente'){
@@ -2064,7 +2097,13 @@ window.svL=async function(id){
         cM(); render(CM); toast('Criado! ✅','ok');
         try{
           const newId=await fbAdd('lancamentos',{...d});
-          if(newId){const idx=store.lancamentos.findIndex(x=>x.id===tmpId);if(idx>=0)store.lancamentos[idx].id=newId;}
+          if(newId){
+            const idx=store.lancamentos.findIndex(x=>x.id===tmpId);
+            if(idx>=0) store.lancamentos[idx].id=newId;
+            // FIX: dedup por ID — fingerprint match no onSnapshot pode ter trocado o tmpId
+            // antes desta linha; garante que não ficam dois itens com o mesmo newId
+            store.lancamentos=[...new Map(store.lancamentos.map(x=>[x.id,x])).values()];
+          }
           lsSave();
         }catch(e){ lsSave(); }
       }
@@ -2080,28 +2119,49 @@ window.svL=async function(id){
 };
 window.dL=async function(id){
   const r=store.lancamentos.find(x=>x.id===id);
-  const hasGrp=r&&(r.parcelamento_id||r.recorrencia_id);
-  const gid=r?.parcelamento_id||r?.recorrencia_id;
-  const extras=hasGrp?store.lancamentos.filter(x=>(x.parcelamento_id||x.recorrencia_id)===gid).length:0;
+  if(!r){toast('Lançamento não encontrado','er');return;}
+  const gid=r.parcelamento_id||r.recorrencia_id||null;
+
+  const doRender=()=>{
+    if(CM==='auditoria') rAuditoria();
+    else if(CM==='agenda') rAgenda();
+    else if(CM==='fluxocaixa') rFluxo();
+    else rLanc();
+  };
+
+  // Exclui somente este lançamento
+  const deleteSingle=async()=>{
+    store.lancamentos=store.lancamentos.filter(x=>x.id!==id);
+    doRender(); toast('Excluído ✅','ok');
+    try{ await fbDel('lancamentos',id); lsSave(); }catch(e){ lsSave(); }
+  };
+
+  if(gid){
+    const grpItems=store.lancamentos.filter(x=>(x.parcelamento_id||x.recorrencia_id)===gid);
+    const extras=grpItems.length;
+    if(extras>1){
+      // FIX: uma única dialog com 3 botões claros evita a confusão de dois confirms
+      confirm3_(
+        'Excluir Lançamento',
+        `Este lançamento faz parte de um grupo com <strong>${extras} vinculados</strong>.<br>O que deseja fazer?`,
+        deleteSingle,                         // botão "Só este"
+        async()=>{                            // botão "Excluir todos (N)"
+          const idsGrp=grpItems.map(x=>x.id);
+          store.lancamentos=store.lancamentos.filter(x=>(x.parcelamento_id||x.recorrencia_id)!==gid);
+          doRender(); toast(`Excluindo ${extras} lançamentos…`,'in');
+          for(const xid of idsGrp) await fbDel('lancamentos',xid);
+          lsSave(); toast(`${extras} lançamentos excluídos ✅`,'ok');
+        },
+        `Excluir todos (${extras})`           // label do botão vermelho
+      );
+      return;
+    }
+  }
+
   confirm_('Excluir Lançamento',
-    extras>1?`Excluir só este ou todos os ${extras} vinculados?`:`Excluir "${r?.descricao||'este lançamento'}"?`,
-    async ()=>{
-      if(hasGrp&&extras>1&&confirm(`Excluir TODOS os ${extras} lançamentos vinculados?`)){
-        const idsGrp=store.lancamentos.filter(x=>(x.parcelamento_id||x.recorrencia_id)===gid).map(x=>x.id);
-        store.lancamentos=store.lancamentos.filter(x=>(x.parcelamento_id||x.recorrencia_id)!==gid);
-        for(const xid of idsGrp) await fbDel('lancamentos',xid);
-        lsSave();
-        toast(`${extras} lançamentos excluídos`,'ok');
-      } else {
-        store.lancamentos=store.lancamentos.filter(x=>x.id!==id);
-        render(CM); toast('Excluído ✅','ok');
-        try{ await fbDel('lancamentos',id); lsSave(); }catch(e){ lsSave(); }
-      }
-      if(CM==='auditoria') rAuditoria();
-      else if(CM==='agenda') rAgenda();
-      else if(CM==='fluxocaixa') rFluxo();
-      else rLanc();
-    });
+    `Excluir "<strong>${r.descricao||r.categoria||'este lançamento'}</strong>"?`,
+    deleteSingle
+  );
 };
 
 // ══════════════════════════════════════════════
