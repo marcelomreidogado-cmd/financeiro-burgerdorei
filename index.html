@@ -1490,23 +1490,11 @@ function setupRealtimeSync(){
         if(ch.type==='added'||ch.type==='modified'){
           const i=store.lancamentos.findIndex(x=>x.id===d.id);
           if(i>=0){
-            store.lancamentos[i]=d;
-            mudou=true;
+            store.lancamentos[i]=d; // update in-place
           } else {
-            // FIX: evita duplicação por race condition com fbAdd otimista.
-            // IDs locais temporários começam com 'u' (função uid()).
-            // Tenta casar por fingerprint antes de unshift.
-            const fingerIdx=store.lancamentos.findIndex(x=>
-              typeof x.id==='string' && x.id.startsWith('u') &&
-              x.data_competencia===d.data_competencia &&
-              String(x.valor)===String(d.valor) &&
-              x.categoria_id===d.categoria_id &&
-              x.rec_desp===d.rec_desp
-            );
-            if(fingerIdx>=0) store.lancamentos[fingerIdx]=d;
-            else store.lancamentos.unshift(d);
-            mudou=true;
+            store.lancamentos.unshift(d); // novo item do Firebase
           }
+          mudou=true;
         } else if(ch.type==='removed'){
           store.lancamentos=store.lancamentos.filter(x=>x.id!==ch.doc.id);
           mudou=true;
@@ -2067,60 +2055,65 @@ window.svL=async function(id){
     } else {
       const rec=$('f-rec')?$('f-rec').value:'unica';
       if(rec==='parcelada'){
+        // ABORDAGEM SERVER-FIRST: nunca usar tmpIds para parcelado.
+        // Salva cada parcela no Firebase, obtém o ID real, insere no store com ID real.
+        // O onSnapshot só faz update (findIndex encontra) — nunca push duplicado.
         const np=parseInt(($('f-np')||{value:2}).value)||2;
         const gid=uid();
-        // Monta array local primeiro, evitando slice(0,np) sobre store inteiro
-        const valParc=+(d.valor/np).toFixed(2); // FIX: divide valor por parcela
-        const novas=[];
+        const valParc=+(d.valor/np).toFixed(2);
+        cM(); // fecha modal imediatamente — sem inserir no store ainda
+        toast(`Criando ${np} parcelas…`,'in');
         for(let i=0;i<np;i++){
           const dc=addMonths(d.data_competencia,i);
           const dv=d.data_vencimento?addMonths(d.data_vencimento,i):null;
-          novas.push({id:uid(),...d,valor:valParc,data_competencia:dc,data_vencimento:dv,
+          const parcela={...d,valor:valParc,data_competencia:dc,data_vencimento:dv,
             descricao:`${d.descricao||d.categoria} (${i+1}/${np})`,
-            parcela_info:`${i+1}/${np}`,parcelamento_id:gid});
+            parcela_info:`${i+1}/${np}`,parcelamento_id:gid};
+          const newId=await fbAdd('lancamentos',{...parcela});
+          if(newId){
+            // Insere no store com ID real — o onSnapshot ao chegar faz update, não push
+            if(!store.lancamentos.find(x=>x.id===newId)){
+              store.lancamentos.unshift({id:newId,...parcela});
+            }
+          }
         }
-        novas.forEach(l=>store.lancamentos.unshift(l));
-        cM(); render(CM); // fecha modal ANTES do loop await
-        toast(`Criando ${np} parcelas…`,'in');
-        const tmpIdsParc=new Set(novas.map(l=>l.id));
-        for(const l of novas){await fbAdd('lancamentos',{...l});}
-        // FIX: remove ghosts de tmpId que não foram substituídos pelo fingerprint
-        store.lancamentos=store.lancamentos.filter(x=>!tmpIdsParc.has(x.id));
+        // Garante zero duplicatas por ID
         store.lancamentos=[...new Map(store.lancamentos.map(x=>[x.id,x])).values()];
-        lsSave();
+        lsSave(); render(CM);
         toast(`${np} parcelas criadas! ✅`,'ok');
       } else if(rec==='recorrente'){
+        // Mesmo padrão server-first para recorrente
         const nm=parseInt(($('f-nm')||{value:12}).value)||12;
         const gid=uid();
-        const novas=[];
+        cM();
+        toast(`Criando ${nm} recorrências…`,'in');
         for(let i=0;i<nm;i++){
           const dc=addMonths(d.data_competencia,i);
           const dv=d.data_vencimento?addMonths(d.data_vencimento,i):null;
-          novas.push({id:uid(),...d,data_competencia:dc,data_vencimento:dv,
-            recorrente:true,recorrencia_id:gid});
+          const rec_item={...d,data_competencia:dc,data_vencimento:dv,recorrente:true,recorrencia_id:gid};
+          const newId=await fbAdd('lancamentos',{...rec_item});
+          if(newId && !store.lancamentos.find(x=>x.id===newId)){
+            store.lancamentos.unshift({id:newId,...rec_item});
+          }
         }
-        novas.forEach(l=>store.lancamentos.unshift(l));
-        cM(); render(CM);
-        toast(`Criando ${nm} recorrências…`,'in');
-        for(const l of novas){await fbAdd('lancamentos',{...l});}
-        lsSave();
+        store.lancamentos=[...new Map(store.lancamentos.map(x=>[x.id,x])).values()];
+        lsSave(); render(CM);
         toast(`${nm} meses recorrentes criados! ✅`,'ok');
       } else {
         // --- ÚNICO ---
-        const tmpId=uid();
-        store.lancamentos.unshift({id:tmpId,...d});
-        cM(); render(CM); toast('Criado! ✅','ok');
+        // Lançamento único: server-first com feedback otimista controlado
+        cM(); toast('Salvando…','in');
         try{
           const newId=await fbAdd('lancamentos',{...d});
           if(newId){
-            const idx=store.lancamentos.findIndex(x=>x.id===tmpId);
-            if(idx>=0) store.lancamentos[idx].id=newId;
-            // FIX: dedup por ID — fingerprint match no onSnapshot pode ter trocado o tmpId
-            // antes desta linha; garante que não ficam dois itens com o mesmo newId
+            // Insere com ID real — o onSnapshot ao chegar faz update, não push duplicado
+            if(!store.lancamentos.find(x=>x.id===newId)){
+              store.lancamentos.unshift({id:newId,...d});
+            }
             store.lancamentos=[...new Map(store.lancamentos.map(x=>[x.id,x])).values()];
+            lsSave(); toast('Criado! ✅','ok');
           }
-          lsSave();
-        }catch(e){ lsSave(); }
+        }catch(e){ toast('Erro ao salvar. Verifique conexão.','er'); }
       }
     }
     // Atualiza a aba correta sem chamar cM() novamente (já foi chamado acima por fluxo)
