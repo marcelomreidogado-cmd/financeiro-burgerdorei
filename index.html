@@ -1538,6 +1538,21 @@ function setupRealtimeSync(){
           if(idx>=0){
             store.agenda[idx]={...store.agenda[idx],...d};
           } else {
+            // FIX DUPLICAÇÃO AGENDA: antes de inserir, remove itens com mesma chave
+            // que possam ter ficado no store (ex: item removido localmente mas ainda
+            // chegando pelo onSnapshot de outra aba ou sessão concorrente)
+            try{
+              const prep=agPrepareManual(d);
+              const mKey=agManualKey(prep);
+              const uKey=agUniqueReceiptKey(prep);
+              if(mKey||uKey){
+                store.agenda=store.agenda.filter(x=>{
+                  if(mKey && agManualKey(x)===mKey) return false;
+                  if(uKey && agUniqueReceiptKey(x)===uKey) return false;
+                  return true;
+                });
+              }
+            }catch(_e2){}
             store.agenda.push(d);
           }
           mudou=true;
@@ -3448,16 +3463,28 @@ function normalizeAgendaStore(){
   const base=store.agenda||[];
   const outros=base.filter(raw=>(raw?.tipo||'receber')==='pagar');
   const manuais=agRecebimentosUnicos(base.filter(raw=>(raw?.tipo||'receber')!=='pagar'),'');
-  store.agenda=[...outros,...manuais];
+  // FIX: dedup final por ID como rede de segurança contra duplicatas de race conditions
+  const seen=new Set();
+  const semDupId=[...outros,...manuais].filter(x=>{
+    if(!x?.id) return true;
+    if(seen.has(x.id)) return false;
+    seen.add(x.id); return true;
+  });
+  store.agenda=semDupId;
   return store.agenda;
 }
 async function agFirebaseDuplicateIds(item, keepId=''){
   const ids=new Set();
   if(!fbOk||!db||!item?.data) return [];
   const key=agManualKey(item);
+  const uKey=agUniqueReceiptKey(item);
+  // FIX: também compara por agUniqueReceiptKey para capturar docs antigos cujo
+  // agManualKey retorna '' (ex: origem='Manual') mas que têm mesma chave de exibição
   const scan=(snap)=>snap.docs.forEach(doc=>{
     const row=agPrepareManual({id:doc.id,...doc.data()});
-    if(doc.id!==keepId && agManualKey(row)===key) ids.add(doc.id);
+    if(doc.id===keepId) return;
+    if(key && agManualKey(row)===key){ids.add(doc.id);return;}
+    if(uKey && agUniqueReceiptKey(row)===uKey) ids.add(doc.id);
   });
   try{scan(await db.collection('agenda_financeira').get());}
   catch(e){
