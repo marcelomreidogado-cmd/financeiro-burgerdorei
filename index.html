@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<!-- BUILD_ARQ_REVIEW_PROD_2026_06_30_01 -->
+<!-- BUILD_FASE_2_4_5_ARQUITETURA_PERFORMANCE_PRODUCAO_2026_06_30 -->
+<!-- BUILD_FASE245_PROD_2026_06_30_01 -->
 <!-- BUILD_AGENDA_RAIZ_UNICA_SEM_DUPLICAR_2026_06_24_1319 -->
 <!-- BUILD_AGENDA_DEDUP_VISUAL_FIREBASE_2026_06_24_1605 -->
 <!-- HOTFIX_AGENDA_DEDUP_VISUAL_FIREBASE_2026-06-24 -->
@@ -12,10 +13,10 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="financeiro-build" content="BUILD_ARQ_REVIEW_PROD_2026_06_30_01">
+<meta name="financeiro-build" content="BUILD_FASE245_PROD_2026_06_30_01">
 <meta name="refactor-review" content="arquitetura-seguranca-performance-2026-06-30">
 <script>
-window.__BUILD_ID='BUILD_ARQ_REVIEW_PROD_2026_06_30_01';
+window.__BUILD_ID='BUILD_FASE245_PROD_2026_06_30_01';
 (function(){
   try{
     if('serviceWorker' in navigator){
@@ -28,7 +29,7 @@ window.__BUILD_ID='BUILD_ARQ_REVIEW_PROD_2026_06_30_01';
 })();
 </script>
 
-<title>Financeiro — Burger do Rei | BUILD_ARQ_REVIEW_PROD_2026_06_30_01</title>
+<title>Financeiro — Burger do Rei | BUILD_FASE245_PROD_2026_06_30_01</title>
 <!-- HOTFIX_LANCAMENTOS_20260606_DBLCLICK_STATUS_VIEW -->
 <!-- HOTFIX_DRE_API_DESIGN_20260606 -->
 <!-- HOTFIX_AGENDA_UNIQUE_KEY_DEFINITIVO_2026-06-24 -->
@@ -902,7 +903,7 @@ body,.app,.content,.btn,.fc,.fv,input,select,textarea,table{font-family:var(--fo
 
 
 /* =========================================================
-   BUILD_ARQ_REVIEW_PROD_2026_06_30_01
+   BUILD_FASE245_PROD_2026_06_30_01
    Blindagem visual/responsiva sem alterar regra de negócio.
    - Rolagem suave no iOS
    - Campos com 16px no mobile para evitar zoom automático do Safari
@@ -935,6 +936,18 @@ button,input,select,textarea{touch-action:manipulation}
   .ag-week,.ag-grid{grid-template-columns:1fr!important}
   .ag-day{min-height:86px!important}
 }
+
+
+/* FASE 2/4/5 — Arquitetura interna, performance e produção madura */
+.prod-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-bottom:12px}
+.prod-card{background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.018));border:1px solid var(--bd);border-radius:14px;padding:12px;min-width:0}
+.prod-title{font-size:11px;font-weight:800;color:var(--tx2);letter-spacing:.055em;text-transform:uppercase;margin-bottom:6px}
+.prod-value{font-size:18px;font-weight:800;color:var(--tx);letter-spacing:-.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prod-sub{font-size:11px;color:var(--tx3);line-height:1.35;margin-top:4px}
+.prod-ok{color:var(--ok)!important}.prod-warn{color:var(--wa)!important}.prod-bad{color:var(--er)!important}.prod-info{color:var(--in)!important}
+.prod-actions{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.prod-code{font-family:'DM Mono',monospace;font-size:10.5px;color:var(--tx2);background:rgba(255,255,255,.035);border:1px solid var(--bd);border-radius:8px;padding:7px 8px;overflow:auto;max-height:150px}
+@media(max-width:760px){.prod-grid{grid-template-columns:1fr}.prod-actions .btn{flex:1;justify-content:center}.prod-value{font-size:16px}}
 
 </style>
 <!-- Firebase SDK (compat) -->
@@ -1181,7 +1194,7 @@ button,input,select,textarea{touch-action:manipulation}
 <script>
 // ── helpers ──────────────────────────────────────────────
 const $=id=>document.getElementById(id);
-const PROD_BUILD='BUILD_ARQ_REVIEW_PROD_2026_06_30_01';
+const PROD_BUILD='BUILD_FASE245_PROD_2026_06_30_01';
 const htmlEsc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const attrEsc=htmlEsc;
 const idEsc=v=>String(v??'').replace(/[^A-Za-z0-9_:\-\.]/g,'');
@@ -1287,6 +1300,147 @@ const store={
   clientes_mes:{},
   cfg:{inst:['Sicoob - Principal'],fps:['Débito','PIX','Cartão Loja','Cartão Marcelo','Cartão Alex','Cartão Igor']}
 };
+
+
+// ════════════════════════════════════════════════════════
+// FASE 2/4/5 — núcleo interno de arquitetura, índices e produção
+// Mantém o sistema em arquivo único, mas cria camadas lógicas para reduzir risco.
+// ════════════════════════════════════════════════════════
+const AppCore=(()=>{
+  const state={idxSig:'',idx:null,lastSnapshot:null,renderCount:0,lastRenderMs:0,lastHealth:null};
+  const hashStr=(v)=>{let h=2166136261;const s=String(v??'');for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return (h>>>0).toString(36);};
+  const monthOf=(r,field)=>String((r&&r[field])||'').slice(0,7);
+  const agData=(r)=>String((r&&r.data_vencimento)||r?.data_competencia||r?.data_efetivacao||'').slice(0,7);
+  function fingerprint(){
+    const l=store.lancamentos||[],a=store.agenda||[],c=store.centrocusto||[],p=store.patrimonio||[];
+    let h=2166136261;
+    const mix=v=>{const s=String(v??'');for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}};
+    for(const r of l){mix(r.id);mix(r.updated_at?.seconds||'');mix(r.status);mix(r.valor);mix(r.data_competencia);mix(r.data_vencimento);mix(r.rec_desp);mix(r.categoria_id||r.categoria);mix(r.subcategoria_id||r.subcategoria);}
+    for(const r of a){mix(r.id);mix(r.updated_at?.seconds||'');mix(r.status);mix(r.valor);mix(r.data);mix(r.tipo);mix(r.manual_key);}
+    for(const r of c){mix(r.id);mix(r.grupo_id||r.categoria_id||r.categoria);mix(r.subcategoria_id||r.subcategoria);}
+    for(const r of p){mix(r.id);mix(r.valor);mix(r.status);}
+    return [l.length,a.length,c.length,p.length,(h>>>0).toString(36)].join('|');
+  }
+  const addMap=(m,k,v)=>{if(!k)return;if(!m.has(k))m.set(k,[]);m.get(k).push(v);};
+  const sum=(arr,pred)=>asArr(arr).reduce((s,r)=>s+(!pred||pred(r)?(+r.valor||0):0),0);
+  function buildIndex(){
+    const sig=fingerprint();
+    if(state.idx&&state.idxSig===sig) return state.idx;
+    const idx={
+      sig,createdAt:new Date().toISOString(),
+      byId:new Map(),compMonth:new Map(),vencMonth:new Map(),compYear:new Map(),agLancMonth:new Map(),agendaManualMonth:new Map(),
+      pending:[],done:[],receber:[],pagar:[],cats:new Set(),fps:new Set(),monthsComp:new Set(),monthsVenc:new Set(),yearsComp:new Set(),monthsByYear:new Map(),
+      totals:{lancamentos:0,agenda:0,centrocusto:0,patrimonio:0,valorAberto:0}
+    };
+    for(const r of (store.lancamentos||[])){
+      if(!r||!r.id) continue;
+      idx.byId.set(r.id,r); idx.totals.lancamentos++;
+      const cm=monthOf(r,'data_competencia'), vm=monthOf(r,'data_vencimento'), ay=agData(r);
+      addMap(idx.compMonth,cm,r); addMap(idx.vencMonth,vm,r); addMap(idx.agLancMonth,ay,r);
+      if(cm){idx.monthsComp.add(cm);idx.yearsComp.add(cm.slice(0,4));addMap(idx.compYear,cm.slice(0,4),r);addMap(idx.monthsByYear,cm.slice(0,4),cm);}
+      if(vm) idx.monthsVenc.add(vm);
+      if(r.status==='Concluído') idx.done.push(r); else {idx.pending.push(r);idx.totals.valorAberto+=(+r.valor||0);}
+      if(r.rec_desp==='Contas a receber') idx.receber.push(r); else idx.pagar.push(r);
+      if(r.categoria) idx.cats.add(r.categoria);
+      if(r.forma_pagamento) idx.fps.add(r.forma_pagamento);
+    }
+    for(const [ano,arr] of idx.monthsByYear){idx.monthsByYear.set(ano,[...new Set(arr)].sort());}
+    for(const r of (store.agenda||[])){idx.totals.agenda++;addMap(idx.agendaManualMonth,monthOf(r,'data'),r);}
+    idx.totals.centrocusto=(store.centrocusto||[]).length;idx.totals.patrimonio=(store.patrimonio||[]).length;
+    state.idx=idx;state.idxSig=sig;return idx;
+  }
+  function invalidate(){state.idxSig='';}
+  function health(){
+    const idx=buildIndex();
+    const now=new Date();
+    const dupKeys={};let dupLanc=0;
+    for(const r of (store.lancamentos||[])){
+      const k=[r.rec_desp,r.data_competencia,r.data_vencimento,Math.round((+r.valor||0)*100),ccNorm(r.descricao||'')].join('|');
+      dupKeys[k]=(dupKeys[k]||0)+1;
+    }
+    Object.values(dupKeys).forEach(n=>{if(n>1)dupLanc+=n-1;});
+    const firebaseStatus=fbOk?'online':'offline/local';
+    const h={
+      build:PROD_BUILD||window.__BUILD_ID||'',firebaseStatus,
+      registros:idx.totals,
+      pendentes:idx.pending.length,
+      meses:idx.monthsComp.size,
+      duplicidadesProvaveis:dupLanc,
+      cacheIndexado:idx.createdAt,
+      snapshot:state.lastSnapshot,
+      renderCount:state.renderCount,
+      lastRenderMs:state.lastRenderMs,
+      gerado_em:now.toISOString()
+    };
+    state.lastHealth=h;return h;
+  }
+  function payload(reason='manual'){
+    ccEnsureIds();
+    return {
+      versao:'financeiro_burger_backup_v2_producao',
+      build:PROD_BUILD||window.__BUILD_ID||'',
+      fase:'Fase 2 arquitetura interna + Fase 4 performance + Fase 5 produção madura',
+      motivo:reason,
+      exportado_em:new Date().toISOString(),
+      health:health(),
+      store:{
+        lancamentos:store.lancamentos||[],centrocusto:store.centrocusto||[],patrimonio:store.patrimonio||[],
+        agenda:store.agenda||[],clientes_mes:store.clientes_mes||{},cfg:store.cfg||{}
+      }
+    };
+  }
+  function openDB(){
+    return new Promise((resolve,reject)=>{
+      if(!('indexedDB' in window)) return resolve(null);
+      const req=indexedDB.open('financeiro_burger_prod',1);
+      req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains('snapshots'))db.createObjectStore('snapshots',{keyPath:'id'});};
+      req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
+    });
+  }
+  async function saveSnapshot(reason='manual',opts={}){
+    const data=payload(reason);
+    const item={id:Date.now().toString(36),created_at:data.exportado_em,reason,build:data.build,counts:data.health.registros,json:JSON.stringify(data)};
+    try{
+      const dbi=await openDB();
+      if(dbi){
+        await new Promise((resolve,reject)=>{const tx=dbi.transaction('snapshots','readwrite');tx.objectStore('snapshots').put(item);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});
+        // Mantém no máximo 6 snapshots locais para não inchar o navegador.
+        try{
+          const all=await new Promise((resolve,reject)=>{const tx=dbi.transaction('snapshots','readonly');const req=tx.objectStore('snapshots').getAll();req.onsuccess=()=>resolve(req.result||[]);req.onerror=()=>reject(req.error);});
+          all.sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at))).slice(6).forEach(old=>{
+            const tx=dbi.transaction('snapshots','readwrite');tx.objectStore('snapshots').delete(old.id);
+          });
+        }catch(_e){}
+      }else{
+        localStorage.setItem('bdr_prod_snapshot_last',item.json.slice(0,4500000));
+      }
+      state.lastSnapshot={id:item.id,created_at:item.created_at,reason:item.reason,counts:item.counts};
+      try{localStorage.setItem('bdr_prod_snapshot_meta',JSON.stringify(state.lastSnapshot));}catch(_e){}
+      if(!opts.silent) toast('Snapshot local de segurança criado','ok');
+      return state.lastSnapshot;
+    }catch(e){console.warn('Snapshot local falhou:',e);if(!opts.silent)toast('Não foi possível criar snapshot local','er');return null;}
+  }
+  async function autoSnapshot(reason='auto'){
+    try{
+      const key='bdr_prod_autosnapshot_day';const day=today();
+      if(localStorage.getItem(key)===day) return null;
+      const snap=await saveSnapshot(reason,{silent:true});
+      if(snap)localStorage.setItem(key,day);
+      return snap;
+    }catch(e){return null;}
+  }
+  function logMutation(action,col,id,data){
+    try{
+      if(!fbOk||!db||col==='audit_log') return;
+      const safe={};['rec_desp','data_competencia','data_vencimento','data','valor','status','categoria','subcategoria','descricao','tipo'].forEach(k=>{if(data&&data[k]!==undefined)safe[k]=String(data[k]).slice(0,180);});
+      db.collection('audit_log').add({action,col,doc_id:String(id||''),build:PROD_BUILD||'',at:firebase.firestore.FieldValue.serverTimestamp(),client_time:new Date().toISOString(),payload:safe,user_agent:String(navigator.userAgent||'').slice(0,160)}).catch(()=>{});
+    }catch(_e){}
+  }
+  function noteRender(ms){state.renderCount++;state.lastRenderMs=Math.round(ms||0);}
+  try{const meta=localStorage.getItem('bdr_prod_snapshot_meta');if(meta)state.lastSnapshot=JSON.parse(meta);}catch(_e){}
+  return {index:buildIndex,invalidate,health,payload,saveSnapshot,autoSnapshot,logMutation,noteRender,sum,compMonth:m=>buildIndex().compMonth.get(m)||[],compYear:y=>buildIndex().compYear.get(String(y))||[],vencMonth:m=>buildIndex().vencMonth.get(m)||[],agendaLancMonth:m=>buildIndex().agLancMonth.get(m)||[]};
+})();
+window.AppCore=AppCore;
 
 
 // ── Plano de Contas com ID interno fixo ─────────────────
@@ -1423,7 +1577,7 @@ let fbOk = false;
 let unsubListeners = [];
 
 // Blindagem pós-resgate: evita re-render pesado enquanto o usuário clica/digita.
-const APP_VERSION = 'BUILD_ARQ_REVIEW_PROD_2026_06_30_01';
+const APP_VERSION = 'BUILD_FASE245_PROD_2026_06_30_01';
 let renderTimer = null;
 let pendingRender = null;
 function modalAberto(){
@@ -1537,10 +1691,12 @@ async function loadAll(){
     normalizeStoreForRender();
     ccIdsEnsured=false; // invalida cache — dados novos do Firebase chegaram
     ccEnsureIds({persist:false});
+    AppCore.invalidate();
     lsSave();
     setStatus('● '+store.lancamentos.length+' lanç. | online','var(--ok)');
     setupRealtimeSync();
     setTimeout(()=>cleanupDuplicateLancamentos(),3000); // limpa duplicatas antigas do Firebase após sync iniciar
+    setTimeout(()=>AppCore.autoSnapshot('auto-pos-carregamento'),2800);
     return true;
   } catch(e){
     setStatus('● offline','var(--er)');
@@ -1624,6 +1780,7 @@ function setupRealtimeSync(){
         }
       });
       if(!mudou) return;
+      AppCore.invalidate();
       lsSave();
       setStatus('● '+store.lancamentos.length+' lanç. | online','var(--ok)');
       if(CM) safeRender(CM);
@@ -1674,6 +1831,7 @@ function setupRealtimeSync(){
         }
       });
       if(!mudou) return;
+      AppCore.invalidate();
       try{ normalizeAgendaStore(); agScheduleFirebaseCleanup(); }catch(_e){}
       lsSave();
       if(['agenda','fluxocaixa','visaogeral','dashboard','auditoria'].includes(CM)) safeRender(CM);
@@ -1693,6 +1851,7 @@ function setupRealtimeSync(){
       ccIdsEnsured=false; // plano de contas mudou — invalida cache de IDs
     });
     ccEnsureIds();
+    AppCore.invalidate();
     lsSave();
     if(['centrocusto','lancamentos','dashboard','visaogeral','dre','auditoria'].includes(CM)) safeRender(CM);
   }, err=>console.warn('Plano de contas offline:',err.message));
@@ -1708,7 +1867,7 @@ function setupRealtimeSync(){
 
   // patrimônio e configurações em tempo real
   const unsubPat = db.collection('patrimonio').onSnapshot(snap=>{
-    store.patrimonio=snap.docs.map(d=>({id:d.id,...d.data()})); lsSave();
+    store.patrimonio=snap.docs.map(d=>({id:d.id,...d.data()})); AppCore.invalidate(); lsSave();
     if(['patrimonio','auditoria'].includes(CM)) safeRender(CM);
   }, err=>console.warn('Patrimônio offline:',err.message));
   unsubListeners.push(unsubPat);
@@ -1725,6 +1884,8 @@ async function fbAdd(col, data){
   delete data.id;
   data.updated_at = firebase.firestore.FieldValue.serverTimestamp();
   const ref = await db.collection(col).add(data);
+  AppCore.logMutation('add',col,ref.id,data);
+  AppCore.invalidate();
   return ref.id;
 }
 async function fbSet(col, id, data){
@@ -1732,10 +1893,14 @@ async function fbSet(col, id, data){
   delete data.id;
   data.updated_at = firebase.firestore.FieldValue.serverTimestamp();
   await db.collection(col).doc(id).set(data, {merge:true});
+  AppCore.logMutation('set',col,id,data);
+  AppCore.invalidate();
 }
 async function fbDel(col, id){
   if(!fbOk) return;
   await db.collection(col).doc(id).delete();
+  AppCore.logMutation('delete',col,id,{});
+  AppCore.invalidate();
 }
 async function fbBatch(col, items){
   if(!fbOk) return;
@@ -1856,7 +2021,8 @@ function buildMonthNav(){
   if(!SHOW_MONTHNAV.includes(CM)){mn.classList.remove('show');return;}
   mn.classList.add('show');
   const currentYear=new Date().getFullYear().toString();
-  const anos=[...new Set(store.lancamentos.map(r=>(r.data_competencia||r.data_vencimento||'').slice(0,4)).filter(Boolean))].sort();
+  const idx=AppCore.index();
+  const anos=[...idx.yearsComp].sort();
   if(!anos.includes(currentYear)) anos.push(currentYear);
   anos.sort();
 
@@ -1870,7 +2036,7 @@ function buildMonthNav(){
 
   let html=`<div class="yr-group"><div class="m-tab all${!selMes?' act':''}" onclick="setMes('')">Tudo</div></div>`;
   anos.forEach(ano=>{
-    const mesesAno=[...new Set(store.lancamentos.filter(r=>(r.data_competencia||'').startsWith(ano+'-')).map(r=>(r.data_competencia||'').slice(5,7)).filter(Boolean))].sort();
+    const mesesAno=[...(idx.monthsByYear.get(ano)||[])].map(m=>m.slice(5,7)).sort();
     html+=`<div class="yr-group"><span class="yr-lbl">${ano}</span>`;
     mesesAno.forEach(m=>{const key=`${ano}-${m}`;html+=`<div class="m-tab${selMes===key?' act':''}" onclick="setMes('${key}')">${MES_NM[+m-1]}</div>`;});
     html+='</div>';
@@ -1934,10 +2100,11 @@ function rLanc(){
   const tIn=data.filter(r=>r.rec_desp==='Contas a receber').reduce((s,r)=>s+r.valor,0);
   const tOut=data.filter(r=>r.rec_desp!=='Contas a receber').reduce((s,r)=>s+r.valor,0);
 
-  const cats=[...new Set(store.lancamentos.map(r=>r.categoria).filter(Boolean))].sort();
-  const meses=[...new Set(store.lancamentos.map(r=>(r.data_competencia||'').slice(0,7)).filter(Boolean))].sort().reverse();
-  const mesesV=[...new Set(store.lancamentos.map(r=>(r.data_vencimento||'').slice(0,7)).filter(Boolean))].sort().reverse();
-  const fps=[...new Set(store.lancamentos.map(r=>r.forma_pagamento).filter(Boolean))].sort();
+  const idx=AppCore.index();
+  const cats=[...idx.cats].sort();
+  const meses=[...idx.monthsComp].sort().reverse();
+  const mesesV=[...idx.monthsVenc].sort().reverse();
+  const fps=[...idx.fps].sort();
 
   const thC=(k,lbl)=>`<th class="${sortKey===k?'srt':''}" onclick="sortL('${k}')">${lbl}${sortKey===k?(sortDir==='asc'?' ↑':' ↓'):''}</th>`;
 
@@ -2534,10 +2701,11 @@ function rBI(){
   const fAno=($('bi-ano')||{value:new Date().getFullYear().toString()}).value||new Date().getFullYear().toString();
   const fMes=($('bi-mes')||{value:''}).value;
   const fTp=($('bi-tp')||{value:'pagar'}).value;
-  const anos=[...new Set(store.lancamentos.map(r=>(r.data_competencia||'').slice(0,4)).filter(Boolean))].sort().reverse();
-  const mesesAno=[...new Set(store.lancamentos.filter(r=>(r.data_competencia||'').startsWith(fAno+'-')).map(r=>(r.data_competencia||'').slice(0,7)).filter(Boolean))].sort().reverse();
+  const idx=AppCore.index();
+  const anos=[...idx.yearsComp].sort().reverse();
+  const mesesAno=[...(idx.monthsByYear.get(fAno)||[])].sort().reverse();
 
-  const lancsBase=fMes?store.lancamentos.filter(r=>(r.data_competencia||'').startsWith(fMes)):store.lancamentos.filter(r=>(r.data_competencia||'').startsWith(fAno+'-'));
+  const lancsBase=fMes?AppCore.compMonth(fMes):AppCore.compYear(fAno);
   const pagar=lancsBase.filter(r=>r.rec_desp!=='Contas a receber');
   const receber=lancsBase.filter(r=>r.rec_desp==='Contas a receber');
   const alvo=fTp==='pagar'?pagar:receber;
@@ -2547,8 +2715,9 @@ function rBI(){
   const meses=['01','02','03','04','05','06','07','08','09','10','11','12'];
   const fluxo=meses.map((m,i)=>{
     const key=fAno+'-'+m;
-    const e=store.lancamentos.filter(r=>(r.data_competencia||'').startsWith(key)&&r.rec_desp==='Contas a receber').reduce((s,r)=>s+r.valor,0);
-    const s=store.lancamentos.filter(r=>(r.data_competencia||'').startsWith(key)&&r.rec_desp!=='Contas a receber').reduce((s,r)=>s+r.valor,0);
+    const lm=AppCore.compMonth(key);
+    const e=AppCore.sum(lm,r=>r.rec_desp==='Contas a receber');
+    const s=AppCore.sum(lm,r=>r.rec_desp!=='Contas a receber');
     const rl=e-s;const clientes=store.clientes_mes[key]||0;
     return{m:MES_NM[i],key,e,s,rl,clientes,tm:clientes?e/clientes:0};
   }).filter(d=>d.e||d.s);
@@ -2617,7 +2786,7 @@ function rBI(){
     </div>`;
 }
 window.rBI=rBI;
-window.updBIMes=()=>{const el=$('bi-mes');if(el){const ano=$('bi-ano').value;const m=[...new Set(store.lancamentos.filter(r=>(r.data_competencia||'').startsWith(ano+'-')).map(r=>(r.data_competencia||'').slice(0,7)).filter(Boolean))].sort().reverse();el.innerHTML='<option value="">Todos os meses</option>'+m.map(x=>`<option value="${x}">${mesLbl(x)}</option>`).join('');}rBI();};
+window.updBIMes=()=>{const el=$('bi-mes');if(el){const ano=$('bi-ano').value;const m=[...(AppCore.index().monthsByYear.get(ano)||[])].sort().reverse();el.innerHTML='<option value="">Todos os meses</option>'+m.map(x=>`<option value="${x}">${mesLbl(x)}</option>`).join('');}rBI();};
 
 // ══════════════════════════════════════════════
 // DASHBOARD
@@ -2642,21 +2811,22 @@ function mkVencidoCard(r){
 function rDash(){
   const mes=selMes||new Date().toISOString().slice(0,7);
   const mesAnt=addMonths(mes+'-01',-1).slice(0,7);
-  const lM=store.lancamentos.filter(r=>(r.data_competencia||'').startsWith(mes));
-  const lA=store.lancamentos.filter(r=>(r.data_competencia||'').startsWith(mesAnt));
+  const idx=AppCore.index();
+  const lM=AppCore.compMonth(mes);
+  const lA=AppCore.compMonth(mesAnt);
   const entM=lM.filter(r=>r.rec_desp==='Contas a receber').reduce((s,r)=>s+r.valor,0);
   const saiM=lM.filter(r=>r.rec_desp!=='Contas a receber').reduce((s,r)=>s+r.valor,0);
   const entA=lA.filter(r=>r.rec_desp==='Contas a receber').reduce((s,r)=>s+r.valor,0);
   const saiA=lA.filter(r=>r.rec_desp!=='Contas a receber').reduce((s,r)=>s+r.valor,0);
-  const pend=store.lancamentos.filter(r=>r.status==='Pendente');
+  const pend=idx.pending;
   const tPend=pend.reduce((s,r)=>s+r.valor,0);
   const varE=entA?((entM-entA)/entA*100):0,varS=saiA?((saiM-saiA)/saiA*100):0;
 
   // Últimos 6 meses
   const m6=Array.from({length:6},(_,i)=>addMonths(mes+'-01',i-5).slice(0,7));
-  const maxV=Math.max(...m6.map(m=>{const l=store.lancamentos.filter(r=>(r.data_competencia||'').startsWith(m));return Math.max(l.filter(r=>r.rec_desp==='Contas a receber').reduce((s,r)=>s+r.valor,0),l.filter(r=>r.rec_desp!=='Contas a receber').reduce((s,r)=>s+r.valor,0));}),1);
+  const maxV=Math.max(...m6.map(m=>{const l=AppCore.compMonth(m);return Math.max(l.filter(r=>r.rec_desp==='Contas a receber').reduce((s,r)=>s+r.valor,0),l.filter(r=>r.rec_desp!=='Contas a receber').reduce((s,r)=>s+r.valor,0));}),1);
   const bars6=m6.map(m=>{
-    const l=store.lancamentos.filter(r=>(r.data_competencia||'').startsWith(m));
+    const l=AppCore.compMonth(m);
     const e=l.filter(r=>r.rec_desp==='Contas a receber').reduce((s,r)=>s+r.valor,0);
     const s=l.filter(r=>r.rec_desp!=='Contas a receber').reduce((s,r)=>s+r.valor,0);
     const res=e-s;
@@ -2720,10 +2890,11 @@ function rDash(){
 function rVG(){
   const mes=selMes||new Date().toISOString().slice(0,7);
   const ano=mes.slice(0,4);
-  const mesesAno=[...new Set(store.lancamentos.filter(r=>(r.data_competencia||'').startsWith(ano)).map(r=>(r.data_competencia||'').slice(0,7)).filter(Boolean))].sort();
+  const idx=AppCore.index();
+  const mesesAno=[...(idx.monthsByYear.get(ano)||[])].sort();
 
   const linhas=mesesAno.map(m=>{
-    const l=store.lancamentos.filter(r=>(r.data_competencia||'').startsWith(m));
+    const l=AppCore.compMonth(m);
     const receita=l.filter(r=>r.rec_desp==='Contas a receber').reduce((s,r)=>s+r.valor,0);
     const cv=l.filter(r=>r.categoria==='Custo dos produtos').reduce((s,r)=>s+r.valor,0);
     const cf=l.filter(r=>['Despesas Operacionais','Despesas com pessoal','Outras despesas operacionais'].includes(r.categoria)).reduce((s,r)=>s+r.valor,0);
@@ -3165,6 +3336,8 @@ function auditoriaItens(){
 }
 function rAuditoria(){
   const all=auditoriaItens();
+  const prod=AppCore.health();
+  const snap=prod.snapshot;
   const alt=all.filter(x=>x.sev==='Alta').length, med=all.filter(x=>x.sev==='Média').length, bai=all.filter(x=>x.sev==='Baixa').length;
   const tipoResumo=[...new Set(all.map(x=>x.tipo))].map(t=>[t,all.filter(x=>x.tipo===t).length]).sort((a,b)=>b[1]-a[1]);
   const rows=all.slice(0,220).map(x=>{
@@ -3175,6 +3348,13 @@ function rAuditoria(){
     return `<div class="audit-item audit-click" onclick='corrigirAuditoria(${src},${xid})' title="Clique para abrir e corrigir"><h4>${x.sev==='Alta'?'🔴':x.sev==='Média'?'🟠':'🔵'} ${agEsc(x.tipo)} <span class="audit-chip ${x.sev==='Alta'?'bad':x.sev==='Média'?'warn':'ok'}">${x.sev}</span></h4><p>${agEsc(x.msg)}</p><div class="audit-meta">${(x.meta||[]).map(m=>`<span>${agEsc(m)}</span>`).join('')}</div><div class="audit-foot"><span class="audit-tip">Corrija o lançamento ou exclua quando não fizer sentido manter.</span><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn bp btn-s audit-open" onclick='event.stopPropagation();corrigirAuditoria(${src},${xid})'>✏️ ${acao}</button>${excluir}</div></div></div>`;
   }).join('');
   $('content').innerHTML=`<div>
+    <div class="prod-grid">
+      <div class="prod-card"><div class="prod-title">Arquitetura</div><div class="prod-value prod-ok">Camada interna ativa</div><div class="prod-sub">Módulos lógicos: dados, índices, render, backup e auditoria técnica.</div></div>
+      <div class="prod-card"><div class="prod-title">Performance</div><div class="prod-value prod-info">${prod.meses} meses indexados</div><div class="prod-sub">Última renderização: ${prod.lastRenderMs||0}ms · ${prod.renderCount||0} renderizações nesta sessão.</div></div>
+      <div class="prod-card"><div class="prod-title">Firebase</div><div class="prod-value ${prod.firebaseStatus==='online'?'prod-ok':'prod-warn'}">${prod.firebaseStatus}</div><div class="prod-sub">${prod.registros.lancamentos} lançamentos · ${prod.registros.agenda} itens manuais · ${prod.registros.centrocusto} plano.</div></div>
+      <div class="prod-card"><div class="prod-title">Snapshot local</div><div class="prod-value ${snap?'prod-ok':'prod-warn'}">${snap?fmtD(String(snap.created_at).slice(0,10)):'não criado'}</div><div class="prod-sub">${snap?agEsc(snap.reason||'snapshot'):'Use o botão abaixo para criar uma cópia técnica local.'}</div></div>
+    </div>
+    <div class="prod-actions"><button class="btn bp" onclick="exportarBackupJSON()">⬇️ Backup técnico JSON</button><button class="btn bs" onclick="criarSnapshotLocal()">🛡️ Criar snapshot local</button><button class="btn bs" onclick="exportarRelatorioProducao()">📋 Relatório produção</button><span style="font-size:11px;color:var(--tx2)">Fase 2/4/5 aplicada: arquitetura interna, índices/cache e controles de produção.</span></div>
     <div class="audit-grid">
       <div class="audit-card"><div class="audit-title">Risco alto</div><div class="kpi-v" style="color:var(--er);font-size:22px">${alt}</div><div class="audit-sub">corrigir primeiro: vencidos, transferências, campos críticos</div></div>
       <div class="audit-card"><div class="audit-title">Risco médio</div><div class="kpi-v" style="color:var(--wa);font-size:22px">${med}</div><div class="audit-sub">plano de contas, possíveis duplicidades e agenda manual</div></div>
@@ -3214,9 +3394,13 @@ function baixarArquivo(nome,conteudo,tipo='application/json'){
 }
 function csvEscape(v){return '"'+String(v??'').replace(/"/g,'""')+'"';}
 window.exportarBackupJSON=function(){
-  ccEnsureIds();
-  const data={versao:'financeiro_burger_backup_v1',exportado_em:new Date().toISOString(),store:{lancamentos:store.lancamentos,centrocusto:store.centrocusto,patrimonio:store.patrimonio,agenda:store.agenda,clientes_mes:store.clientes_mes,cfg:store.cfg}};
-  baixarArquivo(`backup_financeiro_burger_${today()}.json`,JSON.stringify(data,null,2)); toast('Backup JSON gerado','ok');
+  const data=AppCore.payload('exportacao-manual');
+  baixarArquivo(`backup_financeiro_burger_PROD_${today()}.json`,JSON.stringify(data,null,2)); toast('Backup JSON técnico gerado','ok');
+};
+window.criarSnapshotLocal=async function(){await AppCore.saveSnapshot('manual-botao',{silent:false});};
+window.exportarRelatorioProducao=function(){
+  const rel={build:PROD_BUILD,gerado_em:new Date().toISOString(),health:AppCore.health(),auditoria:auditoriaItens().slice(0,500)};
+  baixarArquivo(`relatorio_producao_financeiro_${today()}.json`,JSON.stringify(rel,null,2));toast('Relatório de produção gerado','ok');
 };
 window.exportarLancamentosCSV=function(){
   ccEnsureIds();
@@ -3236,6 +3420,7 @@ window.receberBackupArquivo=async function(el){
   if(!data.store||!data.store.lancamentos){toast('Backup não reconhecido','er');return;}
   confirm_('Importar backup JSON','Isso vai substituir a base atual no Firebase pelas informações do backup selecionado. Gere outro backup antes de continuar.',async()=>{
     const ok=prompt('Digite IMPORTAR para confirmar a substituição da base.'); if(ok!=='IMPORTAR'){toast('Importação cancelada','in');return;}
+    await AppCore.saveSnapshot('pre-importacao-backup',{silent:true});
     if(!fbOk){Object.assign(store,data.store);lsSave();render(CM);toast('Backup aplicado localmente','ok');return;}
     const cols=['lancamentos','centrocusto','patrimonio','agenda_financeira','clientes_mes'];
     for(const col of cols){const snap=await db.collection(col).get(); for(let i=0;i<snap.docs.length;i+=450){const batch=db.batch();snap.docs.slice(i,i+450).forEach(d=>batch.delete(d.ref));await batch.commit();}}
@@ -3661,7 +3846,7 @@ function agManualMesItems(mes=agendaMes){
   }).sort(agSort);
 }
 function agLancMesItems(mes=agendaMes){
-  return (store.lancamentos||[]).filter(r=>r.rec_desp!=='Contas a receber'&&agLancData(r).startsWith(mes)).map(r=>({
+  return AppCore.agendaLancMonth(mes).filter(r=>r.rec_desp!=='Contas a receber').map(r=>({
     id:'l_'+r.id,
     lancId:r.id,
     source:'lancamento',
@@ -3989,6 +4174,7 @@ function rAgenda(){
 }
 
 window.render=function(m){
+  const __renderStart=(performance&&performance.now)?performance.now():Date.now();
   try{
     normalizeStoreForRender();
     CM=m;window.debouncR=()=>{clearTimeout(DT);DT=setTimeout(()=>render(m),230);};
@@ -3998,6 +4184,7 @@ window.render=function(m){
     buildMonthNav();
     const fn=({visaogeral:rVG,dashboard:rDash,lancamentos:rLanc,agenda:rAgenda,fluxocaixa:rFluxo,dre:rDRE,auditoria:rAuditoria,bi:rBI,centrocusto:rCC,patrimonio:rPat,config:rCfg}[m]||rVG);
     fn();
+    AppCore.noteRender(((performance&&performance.now)?performance.now():Date.now())-__renderStart);
   }catch(e){
     console.error('Erro ao renderizar aba '+m, e);
     const c=$('content');
@@ -4048,7 +4235,8 @@ window.render=function(m){
 
 <!-- BUILD_AGENDA_DEDUP_VISUAL_FIREBASE_2026_06_24_1605_END -->
 
-<!-- BUILD_ARQ_REVIEW_PROD_2026_06_30_01_END -->
+<!-- BUILD_FASE245_PROD_2026_06_30_01_END -->
 <!-- BUILD_AGENDA_RAIZ_UNICA_SEM_DUPLICAR_2026_06_24_1319_END -->
+<!-- BUILD_FASE_2_4_5_ARQUITETURA_PERFORMANCE_PRODUCAO_2026_06_30_END -->
 </body>
 </html>
