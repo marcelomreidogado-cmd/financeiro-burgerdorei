@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- BUILD_ARQ_REVIEW_PROD_2026_06_30_01 -->
 <!-- BUILD_AGENDA_RAIZ_UNICA_SEM_DUPLICAR_2026_06_24_1319 -->
 <!-- BUILD_AGENDA_DEDUP_VISUAL_FIREBASE_2026_06_24_1605 -->
 <!-- HOTFIX_AGENDA_DEDUP_VISUAL_FIREBASE_2026-06-24 -->
@@ -11,9 +12,10 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="financeiro-build" content="BUILD_AGENDA_RAIZ_UNICA_SEM_DUPLICAR_2026_06_24_1319">
+<meta name="financeiro-build" content="BUILD_ARQ_REVIEW_PROD_2026_06_30_01">
+<meta name="refactor-review" content="arquitetura-seguranca-performance-2026-06-30">
 <script>
-window.__BUILD_ID='BUILD_AGENDA_RAIZ_UNICA_SEM_DUPLICAR_2026_06_24_1319';
+window.__BUILD_ID='BUILD_ARQ_REVIEW_PROD_2026_06_30_01';
 (function(){
   try{
     if('serviceWorker' in navigator){
@@ -26,7 +28,7 @@ window.__BUILD_ID='BUILD_AGENDA_RAIZ_UNICA_SEM_DUPLICAR_2026_06_24_1319';
 })();
 </script>
 
-<title>Financeiro — Burger do Rei | BUILD_AGENDA_RAIZ_UNICA_SEM_DUPLICAR_2026_06_24_1319</title>
+<title>Financeiro — Burger do Rei | BUILD_ARQ_REVIEW_PROD_2026_06_30_01</title>
 <!-- HOTFIX_LANCAMENTOS_20260606_DBLCLICK_STATUS_VIEW -->
 <!-- HOTFIX_DRE_API_DESIGN_20260606 -->
 <!-- HOTFIX_AGENDA_UNIQUE_KEY_DEFINITIVO_2026-06-24 -->
@@ -39,6 +41,8 @@ window.__BUILD_ID='BUILD_AGENDA_RAIZ_UNICA_SEM_DUPLICAR_2026_06_24_1319';
 <meta name="application-name" content="Financeiro BDR">
 <meta name="theme-color" content="#0c0e14">
 <meta name="description" content="Sistema financeiro Burger do Rei">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="format-detection" content="telephone=no">
 
 <!-- Manifest/PWA desativado para evitar cache antigo segurando versão anterior -->
 <script>/* BUILD_AGENDA_DEDUP_VISUAL_FIREBASE_2026_06_24_1605: PWA/manifest/service worker desativados nesta versão limpa */</script>
@@ -895,6 +899,43 @@ body,.app,.content,.btn,.fc,.fv,input,select,textarea,table{font-family:var(--fo
   #content.dre-content .dre-table-shell .dre-t td{padding:7px 10px!important;}
 }
 
+
+
+/* =========================================================
+   BUILD_ARQ_REVIEW_PROD_2026_06_30_01
+   Blindagem visual/responsiva sem alterar regra de negócio.
+   - Rolagem suave no iOS
+   - Campos com 16px no mobile para evitar zoom automático do Safari
+   - Tabelas preservadas com overflow controlado
+   ========================================================= */
+html{-webkit-text-size-adjust:100%}
+button,input,select,textarea{touch-action:manipulation}
+.tw,.cc-groups,#content{-webkit-overflow-scrolling:touch}
+@media(max-width:760px){
+  :root{--sw:58px;--hh:54px}
+  html,body{overflow:hidden;font-size:13px}
+  #sb{width:58px!important;min-width:58px!important}
+  #sb .sb-nm,#sb .sb-sec,#sb .lb{opacity:0!important;pointer-events:none!important}
+  #topbar{padding:0 10px;gap:6px}
+  #topbar h1{font-size:13px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chip{font-size:10px;padding:2px 6px}
+  #content{padding:10px;overscroll-behavior:contain}
+  .kpis{grid-template-columns:1fr!important;gap:8px}
+  .tb{position:sticky;top:0;z-index:8;gap:6px;padding:8px}
+  .tb .sw-wrap{min-width:100%;flex-basis:100%}
+  input,select,textarea,.fv,.fc,.sw-wrap input{font-size:16px!important}
+  .btn{min-height:36px;justify-content:center}
+  .tw{max-height:calc(100vh - 245px)!important;border-radius:10px}
+  .tw table{min-width:980px}
+  .mo{max-height:94vh;border-radius:12px}
+  .mbody{padding:12px}
+  .mf{position:sticky;bottom:0;background:var(--s1);flex-wrap:wrap}
+  .mf .btn{flex:1}
+  .fg,.fg3{grid-template-columns:1fr!important}
+  .ag-week,.ag-grid{grid-template-columns:1fr!important}
+  .ag-day{min-height:86px!important}
+}
+
 </style>
 <!-- Firebase SDK (compat) -->
 <!-- Firebase carregado dinamicamente após abrir a tela para evitar travamento local -->
@@ -1140,6 +1181,34 @@ body,.app,.content,.btn,.fc,.fv,input,select,textarea,table{font-family:var(--fo
 <script>
 // ── helpers ──────────────────────────────────────────────
 const $=id=>document.getElementById(id);
+const PROD_BUILD='BUILD_ARQ_REVIEW_PROD_2026_06_30_01';
+const htmlEsc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const attrEsc=htmlEsc;
+const idEsc=v=>String(v??'').replace(/[^A-Za-z0-9_:\-\.]/g,'');
+const asArr=v=>Array.isArray(v)?v:[];
+const toMoney=v=>{if(typeof v==='number')return Number.isFinite(v)?v:0;const raw=String(v??0).trim();const br=raw.includes(',')?raw.replace(/\./g,'').replace(',','.'):raw;const n=Number(br);return Number.isFinite(n)?n:0;};
+function dedupeArrayById(arr){const seen=new Set();return asArr(arr).filter(x=>{if(!x||typeof x!=='object')return false;if(!x.id)return true;if(seen.has(x.id))return false;seen.add(x.id);return true;});}
+function normalizeStoreForRender(){
+  store.lancamentos=dedupeArrayById(store.lancamentos).map(r=>({
+    ...r,
+    valor:toMoney(r.valor),
+    rec_desp:r.rec_desp||'Contas a pagar',
+    status:r.status||'Pendente',
+    forma_pagamento:normFP(r.forma_pagamento),
+    categoria:String(r.categoria||''),
+    subcategoria:String(r.subcategoria||''),
+    descricao:String(r.descricao||'')
+  }));
+  store.centrocusto=dedupeArrayById(store.centrocusto);
+  store.patrimonio=dedupeArrayById(store.patrimonio).map(r=>({...r,valor:toMoney(r.valor),valor_atual:toMoney(r.valor_atual||r.valor)}));
+  store.agenda=dedupeArrayById(store.agenda).map(r=>({...r,valor:toMoney(r.valor),status:r.status||'Pendente'}));
+  store.clientes_mes=store.clientes_mes&&typeof store.clientes_mes==='object'?store.clientes_mes:{};
+  Object.keys(store.clientes_mes).forEach(k=>{store.clientes_mes[k]=Number(store.clientes_mes[k])||0;});
+  store.cfg={inst:['Sicoob - Principal'],fps:['Débito','PIX','Cartão Loja','Cartão Marcelo','Cartão Alex','Cartão Igor'],...(store.cfg||{})};
+  store.cfg.inst=asArr(store.cfg.inst).filter(Boolean);
+  store.cfg.fps=asArr(store.cfg.fps).filter(Boolean).map(normFP);
+}
+function safeInvoke(label,fn){try{return fn();}catch(e){console.error(label,e);toast(label+': '+(e.message||e),'er');return null;}}
 const fmt=v=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v||0);
 const fmtN=v=>new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}).format(v||0);
 const fmtD=d=>d?new Date(d+'T12:00:00').toLocaleDateString('pt-BR'):'—';
@@ -1169,7 +1238,9 @@ function mesOptGroups(lista,sel=''){
 
 function toast(msg,tp='in'){
   const e=document.createElement('div');e.className=`tos tos-${tp}`;
-  e.innerHTML=`<span>${{ok:'✅',er:'❌',in:'ℹ️'}[tp]||'ℹ️'}</span><span>${msg}</span>`;
+  const ico=document.createElement('span');ico.textContent={ok:'✅',er:'❌',in:'ℹ️'}[tp]||'ℹ️';
+  const tx=document.createElement('span');tx.textContent=String(msg||'');
+  e.appendChild(ico);e.appendChild(tx);
   $('ta').appendChild(e);setTimeout(()=>{e.classList.add('rem');setTimeout(()=>e.remove(),200)},3000);
 }
 function confirm_(t,m,fn){
@@ -1352,7 +1423,7 @@ let fbOk = false;
 let unsubListeners = [];
 
 // Blindagem pós-resgate: evita re-render pesado enquanto o usuário clica/digita.
-const APP_VERSION = 'BUILD_AGENDA_RAIZ_UNICA_SEM_DUPLICAR_2026_06_24_1319';
+const APP_VERSION = 'BUILD_ARQ_REVIEW_PROD_2026_06_30_01';
 let renderTimer = null;
 let pendingRender = null;
 function modalAberto(){
@@ -1426,6 +1497,7 @@ function lsLoad(){
         clientes_mes:d.clientes_mes||{},
         cfg:{...store.cfg,...(d.cfg||{})}
       });
+      normalizeStoreForRender();
       ccEnsureIds();
       return true;
     }
@@ -1458,9 +1530,11 @@ async function loadAll(){
     store.patrimonio   = patSnap.docs.map(d=>({id:d.id,...d.data()}));
     store.agenda       = agSnap ? agSnap.docs.map(d=>({id:d.id,...d.data()})) : (store.agenda||[]);
     try{ normalizeAgendaStore(); agScheduleFirebaseCleanup(); }catch(_e){}
+    normalizeStoreForRender();
     store.clientes_mes = {};
     cmSnap.docs.forEach(d=>{ store.clientes_mes[d.id]=d.data().count||0; });
     if(cfgSnap.docs.length) store.cfg = {...store.cfg,...cfgSnap.docs[0].data()};
+    normalizeStoreForRender();
     ccIdsEnsured=false; // invalida cache — dados novos do Firebase chegaram
     ccEnsureIds({persist:false});
     lsSave();
@@ -1879,19 +1953,19 @@ function rLanc(){
     const statusTxt=r.status==='Concluído'?'Concluído':'Pendente';
     const parcTag=isParc?`<span class="bg bpu2" style="font-size:10px;margin-left:4px">Parcelado${r.parcela_info?' '+r.parcela_info:''}</span>`:'';
     const recTag=isRec?`<span class="bg bblue" style="font-size:10px;margin-left:4px">Recorrente</span>`:'';
-    return`<tr onclick="selRow(this,'${r.id}')" ondblclick="event.stopPropagation();eL('${r.id}')" style="cursor:pointer" title="Clique para selecionar. Duplo clique abre edição.">
+    return`<tr onclick="selRow(this,'${attrEsc(r.id)}')" ondblclick="event.stopPropagation();eL('${attrEsc(r.id)}')" style="cursor:pointer" title="Clique para selecionar. Duplo clique abre edição.">
       <td class="mono" style="font-size:12px;white-space:nowrap">${fmtD(r.data_competencia)}</td>
       <td class="mono" style="font-size:12px;color:var(--tx2);white-space:nowrap">${fmtD(r.data_vencimento)}</td>
-      <td><span style="font-size:12px;color:var(--tx2)">${r.forma_pagamento||'—'}</span></td>
-      <td style="font-size:12px;color:var(--tx2)">${r.categoria||'—'}</td>
-      <td style="font-size:12px;color:var(--tx3)">${r.subcategoria||'—'}</td>
-      <td class="trunc" title="${r.descricao||''}" style="max-width:260px">${r.descricao||'—'}</td>
+      <td><span style="font-size:12px;color:var(--tx2)">${ccSafe(r.forma_pagamento)||'—'}</span></td>
+      <td style="font-size:12px;color:var(--tx2)">${ccSafe(r.categoria)||'—'}</td>
+      <td style="font-size:12px;color:var(--tx3)">${ccSafe(r.subcategoria)||'—'}</td>
+      <td class="trunc" title="${attrEsc(r.descricao||'')}" style="max-width:260px">${ccSafe(r.descricao)||'—'}</td>
       <td class="tr"><span class="${isIn?'vin':'vout'}">${isIn?'+':'−'} ${fmtN(r.valor)}</span></td>
       <td><span class="bg ${r.status==='Concluído'?'bgreen':'byel'}">${r.status==='Concluído'?'✓':'⏳'} ${statusTxt}</span>${parcTag}${recTag}</td>
       <td><div class="ra">
-        ${r.status==='Pendente'?`<button class="btn bp btn-s btn-i" title="Dar baixa" onclick="event.stopPropagation();abreBaixa('${r.id}')">✅</button>`:''}
-        <button class="btn bs btn-s btn-i" title="Editar" onclick="event.stopPropagation();eL('${r.id}')">✏️</button>
-        <button class="btn bd2 btn-s btn-i" title="Excluir" onclick="event.stopPropagation();dL('${r.id}')">🗑️</button>
+        ${r.status==='Pendente'?`<button class="btn bp btn-s btn-i" title="Dar baixa" onclick="event.stopPropagation();abreBaixa('${attrEsc(r.id)}')">✅</button>`:''}
+        <button class="btn bs btn-s btn-i" title="Editar" onclick="event.stopPropagation();eL('${attrEsc(r.id)}')">✏️</button>
+        <button class="btn bd2 btn-s btn-i" title="Excluir" onclick="event.stopPropagation();dL('${attrEsc(r.id)}')">🗑️</button>
       </div></td>
     </tr>`;
   }).join('');
@@ -1915,9 +1989,9 @@ function rLanc(){
         <option value="">Vencimento: Todos</option>
         ${mesOptGroups(mesesV,fMv)}
       </select>
-      <select id="fcat" class="fc" onchange="rLanc()"><option value="">Categoria: Todas</option>${cats.map(c=>`<option value="${c}" ${fC===c?'selected':''}>${c}</option>`).join('')}</select>
-      <select id="fsub" class="fc" onchange="rLanc()"><option value="">Subcategoria: Todas</option>${subs.map(s=>`<option value="${s}" ${fSub===s?'selected':''}>${s}</option>`).join('')}</select>
-      <select id="ffp" class="fc" onchange="rLanc()"><option value="">Forma Pgto: Todas</option>${fps.map(f=>`<option value="${f}" ${fFP===f?'selected':''}>${f}</option>`).join('')}</select>
+      <select id="fcat" class="fc" onchange="rLanc()"><option value="">Categoria: Todas</option>${cats.map(c=>`<option value="${attrEsc(c)}" ${fC===c?'selected':''}>${ccSafe(c)}</option>`).join('')}</select>
+      <select id="fsub" class="fc" onchange="rLanc()"><option value="">Subcategoria: Todas</option>${subs.map(x=>`<option value="${attrEsc(x)}" ${fSub===x?'selected':''}>${ccSafe(x)}</option>`).join('')}</select>
+      <select id="ffp" class="fc" onchange="rLanc()"><option value="">Forma Pgto: Todas</option>${fps.map(f=>`<option value="${attrEsc(f)}" ${fFP===f?'selected':''}>${ccSafe(f)}</option>`).join('')}</select>
       <button class="btn bp" onclick="nL()">＋ Novo</button>
       <div style="grid-column:1/-1;font-size:11px;color:var(--tx3);margin-top:-2px">${filtroManual?'Filtros aplicados.':'Visualização inicial: mês corrente + vencidos pendentes + pendentes sem vencimento. Use os filtros para buscar meses anteriores, próximos ou histórico completo.'}</div>
     </div>
@@ -2009,7 +2083,7 @@ window.previewDatas=()=>{
 };
 
 function lancForm(r={}){
-  const fpO=store.cfg.fps.map(f=>`<option value="${f}" ${r.forma_pagamento===f?'selected':''}>${f}</option>`).join('');
+  const fpO=store.cfg.fps.map(f=>`<option value="${attrEsc(f)}" ${r.forma_pagamento===f?'selected':''}>${ccSafe(f)}</option>`).join('');
   return`<div class="fg">
     <div class="fgi"><label class="fl">Tipo <span class="rq">*</span></label>
       <select id="f-rd" class="fv"><option value="Contas a pagar" ${(r.rec_desp||'Contas a pagar')==='Contas a pagar'?'selected':''}>↓ A Pagar</option><option value="Contas a receber" ${r.rec_desp==='Contas a receber'?'selected':''}>↑ Vendas</option></select></div>
@@ -2028,7 +2102,7 @@ function lancForm(r={}){
     <div class="fgi"><label class="fl">Subcategoria</label>
       <select id="f-sub" class="fv"><option value="">— Selecione —</option>${(r.categoria_id||r.categoria)?subOpts(r.categoria_id||r.categoria,r.subcategoria_id||r.subcategoria):''}</select></div>
     <div class="fgi full"><label class="fl">Descrição</label>
-      <input id="f-ds" type="text" class="fv" value="${r.descricao||''}" placeholder="Descrição do lançamento"></div>
+      <input id="f-ds" type="text" class="fv" value="${attrEsc(r.descricao||'')}" placeholder="Descrição do lançamento"></div>
     ${!r.id?`
     <hr class="fsep">
     <div class="fgi full">
@@ -2529,7 +2603,7 @@ function rBI(){
         <div style="display:flex;gap:12px;margin-top:7px;font-size:10px;color:var(--tx2)"><span><i style="display:inline-block;width:8px;height:8px;background:var(--ok);border-radius:2px;margin-right:3px"></i>Vendas</span><span><i style="display:inline-block;width:8px;height:8px;background:var(--er);border-radius:2px;margin-right:3px"></i>Saídas</span></div>
       </div>
       <div class="bi-card"><div class="sh">Por Categoria <span>${fTp==='pagar'?'saídas':'vendas'}</span></div>
-        ${topCats.map(([c,v])=>`<div class="bar-row"><div class="bar-lbl" title="${c}">${c}</div><div class="bar-wrap"><div class="bar-fill" style="width:${v/maxCat*100}%;background:${fTp==='pagar'?'var(--er)':'var(--ok)'}"></div></div><div class="bar-val">${fmt(v)}</div></div>`).join('')||'<span style="color:var(--tx3);font-size:12px">Sem dados</span>'}
+        ${topCats.map(([c,v])=>`<div class="bar-row"><div class="bar-lbl" title="${attrEsc(c)}">${ccSafe(c)}</div><div class="bar-wrap"><div class="bar-fill" style="width:${v/maxCat*100}%;background:${fTp==='pagar'?'var(--er)':'var(--ok)'}"></div></div><div class="bar-val">${fmt(v)}</div></div>`).join('')||'<span style="color:var(--tx3);font-size:12px">Sem dados</span>'}
       </div>
       <div class="bi-card"><div class="sh">Por Subcategoria <span>top 8</span></div>
         ${topSubs.map(([c,v])=>`<div class="bar-row"><div class="bar-lbl" title="${c}" style="color:var(--tx2)">${c}</div><div class="bar-wrap"><div class="bar-fill" style="width:${v/maxSub*100}%;background:var(--acc)"></div></div><div class="bar-val">${fmt(v)}</div></div>`).join('')||'<span style="color:var(--tx3);font-size:12px">Sem dados</span>'}
@@ -2550,11 +2624,11 @@ window.updBIMes=()=>{const el=$('bi-mes');if(el){const ano=$('bi-ano').value;con
 // ══════════════════════════════════════════════
 function mkVencidoCard(r){
   const dias=Math.round((new Date()-new Date(r.data_vencimento+'T12:00'))/(864e5));
-  return '<div class="vencido-item" data-id="'+r.id+'" '
+  return '<div class="vencido-item" data-id="'+attrEsc(r.id)+'" '
     +'style="display:flex;align-items:center;justify-content:space-between;'
     +'padding:7px 0;border-bottom:1px solid var(--bd);cursor:pointer;transition:background .12s">'
     +'<div>'
-    +'<div style="font-size:13px">'+(r.descricao||r.categoria||'—')+'</div>'
+    +'<div style="font-size:13px">'+ccSafe(r.descricao||r.categoria||'—')+'</div>'
     +'<div style="font-size:11px;color:var(--er)">Venceu '+fmtD(r.data_vencimento)
     +' &nbsp;·&nbsp; <strong>'+dias+'d em atraso</strong></div>'
     +'</div>'
@@ -2607,8 +2681,8 @@ function rDash(){
     const isHj=r.data_vencimento===hojeStr;
     const isAmn=r.data_vencimento===amanhaStr;
     const tag=isHj?`<span class="bg bred" style="font-size:10px">HOJE</span>`:isAmn?`<span class="bg byel" style="font-size:10px">AMANHÃ</span>`:'';
-    return`<div onclick="abreBaixa('${r.id}')" class="pend-item" style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--bd);cursor:pointer;transition:background .12s">
-      <div><div style="font-size:13px;display:flex;align-items:center;gap:6px">${r.descricao||r.categoria||'—'} ${tag}</div><div style="font-size:11px;color:var(--tx2)">${r.categoria} · ${r.subcategoria||''} · Venc. ${fmtD(r.data_vencimento)}</div></div>
+    return`<div onclick="abreBaixa('${attrEsc(r.id)}')" class="pend-item" style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--bd);cursor:pointer;transition:background .12s">
+      <div><div style="font-size:13px;display:flex;align-items:center;gap:6px">${ccSafe(r.descricao||r.categoria||'—')} ${tag}</div><div style="font-size:11px;color:var(--tx2)">${ccSafe(r.categoria)} · ${ccSafe(r.subcategoria)||''} · Venc. ${fmtD(r.data_vencimento)}</div></div>
       <div style="text-align:right"><span class="vout">${fmt(r.valor)}</span><div style="font-size:10px;color:var(--tx3);margin-top:2px">clique p/ baixar</div></div>
     </div>`;
   }
@@ -2626,7 +2700,7 @@ function rDash(){
         <div style="display:flex;gap:12px;margin-top:7px;font-size:10px;color:var(--tx2)"><span><i style="display:inline-block;width:8px;height:8px;background:var(--ok);border-radius:2px;margin-right:3px"></i>Vendas</span><span><i style="display:inline-block;width:8px;height:8px;background:var(--er);border-radius:2px;margin-right:3px"></i>Saídas</span></div>
       </div>
       <div class="bi-card"><div class="sh">Top Despesas <span>${mesLbl(mes)}</span></div>
-        ${topCat.map(([c,v])=>'<div class="bar-row"><div class="bar-lbl" style="font-size:11px" title="'+c+'">'+c+'</div><div class="bar-wrap"><div class="bar-fill" style="width:'+Math.round(v/maxCat*100)+'%;background:var(--er)"></div></div><div class="bar-val" style="color:var(--er);font-size:11px">'+fmt(v)+'</div></div>').join('')||'<span style="color:var(--tx3);font-size:12px">Sem dados</span>'}
+        ${topCat.map(([c,v])=>'<div class="bar-row"><div class="bar-lbl" style="font-size:11px" title="'+attrEsc(c)+'">'+ccSafe(c)+'</div><div class="bar-wrap"><div class="bar-fill" style="width:'+Math.round(v/maxCat*100)+'%;background:var(--er)"></div></div><div class="bar-val" style="color:var(--er);font-size:11px">'+fmt(v)+'</div></div>').join('')||'<span style="color:var(--tx3);font-size:12px">Sem dados</span>'}
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
@@ -2755,7 +2829,7 @@ function ccAgendaCount(cat,sub=''){
     return gMatch && (subObj?((a.subcategoria_id&&a.subcategoria_id===ccRowSubId(subObj))||ccNorm(a.subcategoria)===ccNorm(subObj.subcategoria)):ccNorm(a.subcategoria)===ccNorm(sub));
   }).length;
 }
-function ccSafe(v){return agEsc(v||'');}
+function ccSafe(v){return htmlEsc(v||'');}
 function ccSortStore(){
   store.centrocusto=(store.centrocusto||[]).sort((a,b)=>{
     const c=(a.categoria||'').localeCompare((b.categoria||''),'pt-BR',{sensitivity:'base'});
@@ -3218,14 +3292,14 @@ window.addFP=()=>{const v=$('fp-i').value.trim();if(v){store.cfg.fps.push(v);toa
 window.abreBaixa=function(id){
   const r=store.lancamentos.find(x=>x.id===id);
   if(!r) return;
-  const fpO=store.cfg.fps.map(f=>`<option value="${f}" ${r.forma_pagamento===f?'selected':''}>${f}</option>`).join('');
+  const fpO=store.cfg.fps.map(f=>`<option value="${attrEsc(f)}" ${r.forma_pagamento===f?'selected':''}>${ccSafe(f)}</option>`).join('');
   oM('💰 Dar Baixa — '+( r.descricao||r.categoria||'Lançamento'),
   `<div style="background:var(--s2);border-radius:8px;padding:14px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
-    <div><span style="color:var(--tx2);font-size:11px">CATEGORIA</span><div style="margin-top:3px">${r.categoria||'—'}</div></div>
-    <div><span style="color:var(--tx2);font-size:11px">SUBCATEGORIA</span><div style="margin-top:3px">${r.subcategoria||'—'}</div></div>
+    <div><span style="color:var(--tx2);font-size:11px">CATEGORIA</span><div style="margin-top:3px">${ccSafe(r.categoria)||'—'}</div></div>
+    <div><span style="color:var(--tx2);font-size:11px">SUBCATEGORIA</span><div style="margin-top:3px">${ccSafe(r.subcategoria)||'—'}</div></div>
     <div><span style="color:var(--tx2);font-size:11px">VENCIMENTO</span><div style="margin-top:3px;color:var(--wa)">${fmtD(r.data_vencimento)}</div></div>
     <div><span style="color:var(--tx2);font-size:11px">VALOR</span><div style="margin-top:3px;color:var(--er);font-family:'DM Mono',monospace;font-size:15px;font-weight:700">${fmt(r.valor)}</div></div>
-    <div style="grid-column:1/-1"><span style="color:var(--tx2);font-size:11px">DESCRIÇÃO</span><div style="margin-top:3px">${r.descricao||'—'}</div></div>
+    <div style="grid-column:1/-1"><span style="color:var(--tx2);font-size:11px">DESCRIÇÃO</span><div style="margin-top:3px">${ccSafe(r.descricao)||'—'}</div></div>
   </div>
   <div class="fg">
     <div class="fgi"><label class="fl">Data de Efetivação <span class="rq">*</span></label>
@@ -3233,10 +3307,10 @@ window.abreBaixa=function(id){
     <div class="fgi"><label class="fl">Forma de Pagamento</label>
       <select id="bx-fp" class="fv"><option value="">— Selecione —</option>${fpO}</select></div>
     <div class="fgi full"><label class="fl">Observação</label>
-      <input id="bx-obs" type="text" class="fv" value="${r.descricao||''}" placeholder="Confirmar ou alterar descrição"></div>
+      <input id="bx-obs" type="text" class="fv" value="${attrEsc(r.descricao||'')}" placeholder="Confirmar ou alterar descrição"></div>
   </div>`,
   `<button class="btn bs" onclick="cM()">Cancelar</button>
-   <button class="btn bp" onclick="confirmarBaixa('${id}')">✅ Confirmar Baixa</button>`);
+   <button class="btn bp" onclick="confirmarBaixa('${attrEsc(id)}')">✅ Confirmar Baixa</button>`);
 };
 
 // Delegação de click para cards vencidos (gerados dinamicamente)
@@ -3916,6 +3990,7 @@ function rAgenda(){
 
 window.render=function(m){
   try{
+    normalizeStoreForRender();
     CM=m;window.debouncR=()=>{clearTimeout(DT);DT=setTimeout(()=>render(m),230);};
     const contentEl=$('content');
     if(contentEl) contentEl.classList.toggle('dre-content', m==='dre');
@@ -3973,6 +4048,7 @@ window.render=function(m){
 
 <!-- BUILD_AGENDA_DEDUP_VISUAL_FIREBASE_2026_06_24_1605_END -->
 
+<!-- BUILD_ARQ_REVIEW_PROD_2026_06_30_01_END -->
 <!-- BUILD_AGENDA_RAIZ_UNICA_SEM_DUPLICAR_2026_06_24_1319_END -->
 </body>
 </html>
