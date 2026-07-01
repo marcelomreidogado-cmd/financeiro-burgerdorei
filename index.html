@@ -1466,12 +1466,61 @@ async function loadAll(){
     lsSave();
     setStatus('● '+store.lancamentos.length+' lanç. | online','var(--ok)');
     setupRealtimeSync();
+    setTimeout(()=>cleanupDuplicateLancamentos(),3000); // limpa duplicatas antigas do Firebase após sync iniciar
     return true;
   } catch(e){
     setStatus('● offline','var(--er)');
     toast('Firebase offline — usando dados locais','in');
     return false;
   }
+}
+
+// ── Limpeza automática de lancamentos duplicados (parcelado/recorrente) ──
+async function cleanupDuplicateLancamentos(){
+  if(!fbOk||!db) return;
+  try{
+    const toDelete=new Set();
+    // Duplicatas parcelado: mesmo parcelamento_id + parcela_info
+    const byParc={};
+    (store.lancamentos||[]).forEach(r=>{
+      if(r.parcelamento_id && r.parcela_info){
+        const k=r.parcelamento_id+'|'+r.parcela_info;
+        if(!byParc[k]) byParc[k]=[];
+        byParc[k].push(r);
+      }
+    });
+    Object.values(byParc).forEach(grp=>{
+      if(grp.length>1){
+        grp.sort((a,b)=>a.id<b.id?-1:1); // mantém o mais antigo (id menor = criado primeiro)
+        grp.slice(1).forEach(r=>toDelete.add(r.id));
+      }
+    });
+    // Duplicatas recorrente: mesmo recorrencia_id + data_competencia
+    const byRec={};
+    (store.lancamentos||[]).forEach(r=>{
+      if(r.recorrencia_id && r.data_competencia){
+        const k=r.recorrencia_id+'|'+r.data_competencia;
+        if(!byRec[k]) byRec[k]=[];
+        byRec[k].push(r);
+      }
+    });
+    Object.values(byRec).forEach(grp=>{
+      if(grp.length>1){
+        grp.sort((a,b)=>a.id<b.id?-1:1);
+        grp.slice(1).forEach(r=>toDelete.add(r.id));
+      }
+    });
+    if(toDelete.size===0) return;
+    console.log(`[cleanup] Removendo ${toDelete.size} lancamentos duplicados…`);
+    // Remove do store imediatamente (UI atualiza antes da exclusão no Firebase)
+    store.lancamentos=(store.lancamentos||[]).filter(r=>!toDelete.has(r.id));
+    lsSave();
+    if(CM) safeRender(CM);
+    // Remove do Firebase em background
+    for(const id of toDelete){ try{ await fbDel('lancamentos',id); }catch(_e){} }
+    setStatus('● '+store.lancamentos.length+' lanç. | online','var(--ok)');
+    console.log(`[cleanup] ${toDelete.size} duplicatas removidas.`);
+  }catch(e){ console.warn('[cleanup] Erro:',e.message); }
 }
 
 // ── Sync em tempo real (multi-usuário) ────────────────
