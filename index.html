@@ -1,8 +1,10 @@
 <!DOCTYPE html>
-<!-- BUILD_DEBUG_RAIZ_DRE_AGENDA_2026_07_10_1538 -->
+<!-- REGRESSION_TEST_AGENDA_MANUAL_2026-07-10_2135 -->
+<!-- BUILD_AGENDA_MANUAL_TESTADA_2026_07_10_2135 -->
 <!-- BUILD_AGENDA_DEDUP_VISUAL_FIREBASE_2026_06_24_1605 -->
 <!-- HOTFIX_AGENDA_DEDUP_VISUAL_FIREBASE_2026-06-24 -->
 <!-- HOTFIX_AGENDA_UNIQUE_KEY_DEFINITIVO_2026-06-24 -->
+<!-- HOTFIX_AGENDA_MANUAL_CANONICA_2026-07-10 -->
 <!-- HOTFIX_AGENDA_DELETE_VISIBILITY_SYNC_CACHECLEAN_2026-06-17 -->
 <html lang="pt-BR">
 <head>
@@ -11,9 +13,9 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="financeiro-build" content="BUILD_DEBUG_RAIZ_DRE_AGENDA_2026_07_10_1538">
+<meta name="financeiro-build" content="BUILD_AGENDA_MANUAL_TESTADA_2026_07_10_2135">
 <script>
-window.__BUILD_ID='BUILD_DEBUG_RAIZ_DRE_AGENDA_2026_07_10_1538';
+window.__BUILD_ID='BUILD_AGENDA_MANUAL_TESTADA_2026_07_10_2135';
 (function(){
   try{
     if('serviceWorker' in navigator){
@@ -26,10 +28,10 @@ window.__BUILD_ID='BUILD_DEBUG_RAIZ_DRE_AGENDA_2026_07_10_1538';
 })();
 </script>
 
-<title>Financeiro — Burger do Rei | BUILD_DEBUG_RAIZ_DRE_AGENDA_2026_07_10_1538</title>
+<title>Financeiro — Burger do Rei | BUILD_AGENDA_MANUAL_TESTADA_2026_07_10_2135</title>
 <!-- HOTFIX_LANCAMENTOS_20260606_DBLCLICK_STATUS_VIEW -->
 <!-- HOTFIX_LANCAMENTOS_PAINEL_EXECUTIVO_2026-07-10 -->
-<!-- HOTFIX_DEBUG_RAIZ_DRE_AGENDA_2026-07-10 -->
+<!-- HOTFIX_RAIZ_LANCAMENTOS_SEM_DUPLICAR_2026-07-10 -->
 <!-- HOTFIX_LANCAMENTOS_SEM_CHIPS_MESES_2026-07-10 -->
 <!-- HOTFIX_DRE_API_DESIGN_20260606 -->
 <!-- HOTFIX_AGENDA_UNIQUE_KEY_DEFINITIVO_2026-06-24 -->
@@ -44,7 +46,7 @@ window.__BUILD_ID='BUILD_DEBUG_RAIZ_DRE_AGENDA_2026_07_10_1538';
 <meta name="description" content="Sistema financeiro Burger do Rei">
 
 <!-- Manifest/PWA desativado para evitar cache antigo segurando versão anterior -->
-<script>/* BUILD_DEBUG_RAIZ_DRE_AGENDA_2026_07_10_1538: PWA/manifest/service worker desativados nesta versão limpa */</script>
+<script>/* BUILD_AGENDA_DEDUP_VISUAL_FIREBASE_2026_06_24_1605: PWA/manifest/service worker desativados nesta versão limpa */</script>
 
 <!-- Fontes externas removidas: usa fontes do sistema para abrir mais leve -->
 <style>
@@ -1356,7 +1358,7 @@ let fbOk = false;
 let unsubListeners = [];
 
 // Blindagem pós-resgate: evita re-render pesado enquanto o usuário clica/digita.
-const APP_VERSION = 'BUILD_DEBUG_RAIZ_DRE_AGENDA_2026_07_10_1538';
+const APP_VERSION = 'BUILD_AGENDA_MANUAL_TESTADA_2026_07_10_2135';
 let renderTimer = null;
 let pendingRender = null;
 function modalAberto(){
@@ -1458,10 +1460,13 @@ async function loadAll(){
     try { agSnap = await db.collection('agenda_financeira').get(); }
     catch(e){ console.warn('Agenda ainda não disponível no Firebase:', e.message); }
     store.lancamentos  = lSnap.docs.map(d=>({id:d.id,...d.data()}));
+    normalizeLancamentosStore();
+    lancScheduleFirebaseCleanup();
     store.centrocusto  = ccSnap.docs.map(d=>({id:d.id,...d.data()}));
     store.patrimonio   = patSnap.docs.map(d=>({id:d.id,...d.data()}));
-    store.agenda       = agSnap ? agSnap.docs.map(d=>({id:d.id,...d.data()})) : (store.agenda||[]);
-    try{ normalizeAgendaStore(); agScheduleFirebaseCleanup(); }catch(_e){}
+    const agendaRows = agSnap ? agSnap.docs.map(d=>({id:d.id,...d.data()})) : (store.agenda||[]);
+    store.agenda = agCanonicalRows(agendaRows);
+    if(agSnap){ try{ await agRepairFirebaseAgenda(agendaRows); }catch(e){ console.warn('Reparo inicial da Agenda não concluído:',e.message); } }
     store.clientes_mes = {};
     cmSnap.docs.forEach(d=>{ store.clientes_mes[d.id]=d.data().count||0; });
     if(cfgSnap.docs.length) store.cfg = {...store.cfg,...cfgSnap.docs[0].data()};
@@ -1500,33 +1505,22 @@ function setupRealtimeSync(){
         }
       });
       if(!mudou) return;
+      normalizeLancamentosStore();
+      lancScheduleFirebaseCleanup();
       lsSave();
       setStatus('● '+store.lancamentos.length+' lanç. | online','var(--ok)');
       if(CM) safeRender(CM);
     }, err=>{ console.warn('Sync econômico de lançamentos offline:',err.message); setStatus('● online sem tempo real','var(--wa)'); });
   unsubListeners.push(unsub);
 
-  // agenda financeira manual em tempo real + deduplicação por data/origem.
-  const unsubAgenda = db.collection('agenda_financeira')
-    .onSnapshot(snap=>{
-      let mudou=false;
-      snap.docChanges().forEach(ch=>{
-        const d={id:ch.doc.id,...ch.doc.data()};
-        if(ch.type==='added'||ch.type==='modified'){
-          const i=store.agenda.findIndex(x=>x.id===d.id);
-          if(i>=0) store.agenda[i]=d; else store.agenda.push(d);
-          mudou=true;
-        } else if(ch.type==='removed'){
-          const antes=store.agenda.length;
-          store.agenda=store.agenda.filter(x=>x.id!==ch.doc.id);
-          if(store.agenda.length!==antes) mudou=true;
-        }
-      });
-      if(!mudou) return;
-      try{ normalizeAgendaStore(); agScheduleFirebaseCleanup(); }catch(_e){}
-      lsSave();
-      if(['agenda','fluxocaixa','visaogeral','dashboard','auditoria'].includes(CM)) safeRender(CM);
-    }, err=>{ console.warn('Agenda offline:', err.message); });
+  // Agenda manual em tempo real: o snapshot COMPLETO substitui o estado local.
+  // Não mescla docChanges com cache antigo; isso elimina o efeito cascata que duplicava ao fechar/atualizar.
+  const unsubAgenda = db.collection('agenda_financeira').onSnapshot(snap=>{
+    const rows=snap.docs.map(d=>({id:d.id,...d.data()}));
+    store.agenda=agCanonicalRows(rows);
+    lsSave();
+    if(['agenda','fluxocaixa','visaogeral','dashboard','auditoria'].includes(CM)) safeRender(CM);
+  }, err=>{ console.warn('Agenda offline:', err.message); });
   unsubListeners.push(unsubAgenda);
 
   // plano de contas em tempo real
@@ -1727,6 +1721,96 @@ function buildMonthNav(){
 }
 window.setMes=m=>{selMes=m;CP=1;render(CM);buildMonthNav();};
 window.setDreAno=a=>{dreAnoSel=String(a||new Date().getFullYear());CP=1;render('dre');buildMonthNav();};
+
+
+// HOTFIX_RAIZ_LANCAMENTOS_SEM_DUPLICAR_2026-07-10
+// Causa raiz corrigida: antes o sistema criava um ID temporário local e depois o Firebase devolvia outro ID.
+// O listener em tempo real lia o novo ID e a mesma despesa ficava duplicada em memória/visualização.
+// Agora todo lançamento nasce com ID definitivo e é salvo com doc(id).set, sem fbAdd.
+window.__lancDuplicateIdsToDelete=window.__lancDuplicateIdsToDelete||[];
+let lancCleanupTimer=null;
+function lancNormText(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/\s+/g,' ');}
+function lancDateKey(v){return agDateKey?agDateKey(v):String(v||'').slice(0,10);}
+function lancMoneyKey(v){return (Math.round((+v||0)*100)/100).toFixed(2);}
+function lancMakeId(prefix='lanc'){
+  const rand=Math.random().toString(36).slice(2,9);
+  return (prefix+'_'+Date.now().toString(36)+'_'+rand).replace(/[^a-zA-Z0-9_\-]/g,'_');
+}
+function lancSignature(r){
+  if(!r) return '';
+  return [
+    lancDateKey(r.data_competencia), lancDateKey(r.data_vencimento), lancDateKey(r.data_efetivacao),
+    lancNormText(r.rec_desp), lancNormText(r.forma_pagamento), lancNormText(r.categoria), lancNormText(r.subcategoria),
+    lancNormText(r.descricao), lancMoneyKey(r.valor), lancNormText(r.status), lancNormText(r.parcela_info),
+    lancNormText(r.parcelamento_id), lancNormText(r.recorrencia_id), r.recorrente?'recorrente':''
+  ].join('|');
+}
+function lancTs(r){
+  const v=r?.updated_at||r?.atualizado_em||r?.created_at||r?.criado_em||'';
+  if(v&&typeof v.toMillis==='function') return v.toMillis();
+  if(v&&typeof v.seconds==='number') return v.seconds*1000;
+  const t=Date.parse(v); return Number.isFinite(t)?t:0;
+}
+function normalizeLancamentosStore(){
+  const grupos=new Map();
+  (store.lancamentos||[]).forEach((raw,idx)=>{
+    if(!raw) return;
+    const r={...raw,__idx:idx};
+    const key=lancSignature(r);
+    if(!key){return;}
+    if(!grupos.has(key)) grupos.set(key,[]);
+    grupos.get(key).push(r);
+  });
+  const saida=[];
+  const dupIds=[];
+  grupos.forEach(rows=>{
+    rows.sort((a,b)=>{
+      const at=lancTs(a), bt=lancTs(b);
+      if(at!==bt) return bt-at;
+      const aTmp=String(a.id||'').startsWith('u')?0:1;
+      const bTmp=String(b.id||'').startsWith('u')?0:1;
+      if(aTmp!==bTmp) return bTmp-aTmp;
+      return (b.__idx||0)-(a.__idx||0);
+    });
+    const keep={...rows[0]};
+    delete keep.__idx;
+    saida.push(keep);
+    rows.slice(1).forEach(x=>{if(x.id && x.id!==keep.id) dupIds.push(x.id);});
+  });
+  if(dupIds.length){
+    window.__lancDuplicateIdsToDelete=[...new Set([...(window.__lancDuplicateIdsToDelete||[]),...dupIds])];
+  }
+  store.lancamentos=saida;
+  return store.lancamentos;
+}
+function lancScheduleFirebaseCleanup(){
+  if(!fbOk||!db) return;
+  clearTimeout(lancCleanupTimer);
+  lancCleanupTimer=setTimeout(async()=>{
+    const ids=[...new Set(window.__lancDuplicateIdsToDelete||[])].filter(Boolean).filter(id=>!String(id).startsWith('u'));
+    window.__lancDuplicateIdsToDelete=[];
+    if(!ids.length) return;
+    try{
+      for(const id of ids){await fbDel('lancamentos',id);}
+      console.log('Lançamentos: duplicidades antigas removidas:',ids.length);
+    }catch(e){console.warn('Falha ao limpar duplicidades de lançamentos:',e.message);}
+  },900);
+}
+async function lancPersistMany(items){
+  const arr=(items||[]).filter(Boolean).map(x=>({id:x.id||lancMakeId('lanc'),...x}));
+  // remove qualquer item local que tenha mesma assinatura antes de inserir
+  const sigs=new Set(arr.map(lancSignature));
+  store.lancamentos=(store.lancamentos||[]).filter(x=>!sigs.has(lancSignature(x)));
+  store.lancamentos=[...arr,...store.lancamentos];
+  normalizeLancamentosStore();
+  lsSave();
+  if(fbOk){
+    for(const item of arr){await fbSet('lancamentos',item.id,{...item});}
+    lancScheduleFirebaseCleanup();
+    lsSave();
+  }
+  return arr;
+}
 
 // ══════════════════════════════════════════════
 // LANÇAMENTOS
@@ -2038,41 +2122,39 @@ window.svL=async function(id){
   if(id){
     const i=store.lancamentos.findIndex(x=>x.id===id);
     if(i>=0) store.lancamentos[i]={...store.lancamentos[i],...d};
+    normalizeLancamentosStore();
     cM(); render(CM); toast('Atualizado! ✅','ok');
     try{ if(i>=0) await fbSet('lancamentos',id,d); lsSave(); }catch(e){ lsSave(); }
   } else {
     const rec=$('f-rec')?$('f-rec').value:'unica';
     if(rec==='parcelada'){
       const np=parseInt(($('f-np')||{value:2}).value)||2;
-      const gid=uid();
+      const gid=lancMakeId('parc');
+      const novos=[];
       for(let i=0;i<np;i++){
         const dc=addMonths(d.data_competencia,i);
         const dv=d.data_vencimento?addMonths(d.data_vencimento,i):null;
-        store.lancamentos.unshift({id:uid(),...d,data_competencia:dc,data_vencimento:dv,descricao:`${d.descricao||d.categoria} (${i+1}/${np})`,parcela_info:`${i+1}/${np}`,parcelamento_id:gid});
+        novos.push({id:`lanc_${gid}_${i+1}`,...d,data_competencia:dc,data_vencimento:dv,descricao:`${d.descricao||d.categoria} (${i+1}/${np})`,parcela_info:`${i+1}/${np}`,parcelamento_id:gid});
       }
-      for(const l of store.lancamentos.slice(0,np)){await fbAdd('lancamentos',{...l});}
-      lsSave();
-      toast(`${np} parcelas criadas!`,'ok');
+      await lancPersistMany(novos);
+      toast(`${np} parcelas criadas sem duplicar!`,'ok');
     } else if(rec==='recorrente'){
       const nm=parseInt(($('f-nm')||{value:12}).value)||12;
-      const gid=uid();
+      const gid=lancMakeId('rec');
+      const novos=[];
       for(let i=0;i<nm;i++){
         const dc=addMonths(d.data_competencia,i);
         const dv=d.data_vencimento?addMonths(d.data_vencimento,i):null;
-        store.lancamentos.unshift({id:uid(),...d,data_competencia:dc,data_vencimento:dv,recorrente:true,recorrencia_id:gid});
+        novos.push({id:`lanc_${gid}_${i+1}`,...d,data_competencia:dc,data_vencimento:dv,recorrente:true,recorrencia_id:gid});
       }
-      for(const l of store.lancamentos.slice(0,nm)){await fbAdd('lancamentos',{...l});}
-      lsSave();
-      toast(`${nm} meses recorrentes criados!`,'ok');
+      await lancPersistMany(novos);
+      toast(`${nm} meses recorrentes criados sem duplicar!`,'ok');
     } else {
-      const tmpId = uid();
-      store.lancamentos.unshift({id:tmpId,...d});
-      cM(); render(CM); toast('Criado! ✅','ok');
-      try{
-        const newId = await fbAdd('lancamentos',{...d});
-        if(newId){ const idx=store.lancamentos.findIndex(x=>x.id===tmpId); if(idx>=0) store.lancamentos[idx].id=newId; }
-        lsSave();
-      }catch(e){ lsSave(); }
+      const novo={id:lancMakeId('lanc'),...d};
+      cM();
+      await lancPersistMany([novo]);
+      render(CM);
+      toast('Criado sem duplicar! ✅','ok');
     }
   }
   cM();
@@ -2338,30 +2420,6 @@ function rDRE(){
     </div>`;
 }
 window.rDRE=rDRE;
-
-// HOTFIX_DEBUG_RAIZ_DRE_AGENDA_2026-07-10
-// Blindagem de produção: DRE não pode deixar a tela em branco. Se qualquer dado antigo vier malformado,
-// a aba mostra uma mensagem de diagnóstico em vez de quebrar a página inteira.
-const rDRE_CORE_DEBUG_RAIZ_20260710 = window.rDRE || rDRE;
-window.rDRE = function rDRE(){
-  const content=$('content');
-  try{
-    if(content){content.classList.add('dre-content');content.innerHTML='<div class="es"><div class="em">⏳</div><h3>Carregando DRE...</h3></div>';}
-    return rDRE_CORE_DEBUG_RAIZ_20260710();
-  }catch(e){
-    console.error('DRE bloqueado por erro de dados/renderização:', e);
-    const msg=String((e&&e.message)||e||'Erro desconhecido');
-    if(content){
-      content.classList.add('dre-content');
-      content.innerHTML=`<div class="dre-page" data-versao="DRE-FAILSAFE-2026-07-10">
-        <div class="es"><div class="em">⚠️</div><h3>DRE não abriu por erro de dados</h3><p>${ccSafe(msg)}</p><p style="color:var(--tx3);font-size:12px">A tela não fica mais em branco. Envie este aviso se aparecer novamente.</p></div>
-      </div>`;
-    }
-    try{toast('DRE protegido: erro exibido na tela, não ficou em branco','er');}catch(_e){}
-  }
-};
-rDRE = window.rDRE;
-
 
 // ══════════════════════════════════════════════
 // BI
@@ -3275,6 +3333,105 @@ function agPrepareManual(raw){
   }
   return r;
 }
+
+// HOTFIX_AGENDA_MANUAL_CANONICA_2026-07-10
+// Fonte única da Agenda: 1 documento por DATA + ORIGEM, com ID determinístico.
+function agCanonicalIdFromKey(key){
+  const [data,origem]=String(key||'').split('|');
+  return 'receb_'+String(data||'').replace(/[^0-9]/g,'')+'_'+agSlug(origem||'recebimento');
+}
+function agCanonicalRows(rows){
+  const grupos=new Map();
+  const outros=[];
+  (rows||[]).forEach((raw,idx)=>{
+    if(!raw) return;
+    if((raw.tipo||'receber')==='pagar'){ outros.push({...raw}); return; }
+    const r=agPrepareManual(raw);
+    const key=agManualKey(r);
+    if(!key){ outros.push({...r}); return; }
+    r.manual_key=key;
+    r.__idx=idx;
+    if(!grupos.has(key)) grupos.set(key,[]);
+    grupos.get(key).push(r);
+  });
+  const unicos=[];
+  grupos.forEach((lista,key)=>{
+    const canonicalId=agCanonicalIdFromKey(key);
+    lista.sort((a,b)=>{
+      const at=agTs(a), bt=agTs(b);
+      if(at!==bt) return bt-at;
+      const ac=a.id===canonicalId?1:0, bc=b.id===canonicalId?1:0;
+      if(ac!==bc) return bc-ac;
+      return (b.__idx||0)-(a.__idx||0);
+    });
+    const winner=agPrepareManual({...lista[0]});
+    winner.id=canonicalId;
+    winner.manual_key=key;
+    winner.origem_canonica=agCanonOrigem(winner)||agOrigem(winner);
+    winner.origem=winner.origem_canonica;
+    winner.forma=winner.origem_canonica;
+    winner.descricao=winner.origem_canonica||'Recebimento manual';
+    winner.valor=+winner.valor||0;
+    winner.status=winner.status||'Baixado';
+    winner.__source_ids=lista.map(x=>x.id).filter(Boolean);
+    delete winner.__idx;
+    unicos.push(winner);
+  });
+  return [...outros,...unicos].sort(agSort);
+}
+async function agRepairFirebaseAgenda(rows){
+  if(!fbOk||!db) return;
+  const grupos=new Map();
+  (rows||[]).forEach((raw,idx)=>{
+    if(!raw || (raw.tipo||'receber')==='pagar') return;
+    const r=agPrepareManual(raw);
+    const key=agManualKey(r);
+    if(!key) return;
+    r.__idx=idx;
+    if(!grupos.has(key)) grupos.set(key,[]);
+    grupos.get(key).push(r);
+  });
+  for(const [key,lista] of grupos){
+    const canonicalId=agCanonicalIdFromKey(key);
+    const temCanonical=lista.some(x=>x.id===canonicalId);
+    const precisaReparo=lista.length>1||!temCanonical;
+    if(!precisaReparo) continue;
+    lista.sort((a,b)=>{
+      const at=agTs(a), bt=agTs(b);
+      if(at!==bt) return bt-at;
+      const ac=a.id===canonicalId?1:0, bc=b.id===canonicalId?1:0;
+      if(ac!==bc) return bc-ac;
+      return (b.__idx||0)-(a.__idx||0);
+    });
+    const winner=agPrepareManual({...lista[0]});
+    winner.manual_key=key;
+    winner.origem_canonica=agCanonOrigem(winner)||agOrigem(winner);
+    winner.origem=winner.origem_canonica;
+    winner.forma=winner.origem_canonica;
+    winner.descricao=winner.origem_canonica||'Recebimento manual';
+    winner.valor=+winner.valor||0;
+    winner.status=winner.status||'Baixado';
+    delete winner.id; delete winner.__idx; delete winner.__source_ids; delete winner.__dup_ids; delete winner.__all_ids;
+    winner.updated_at=firebase.firestore.FieldValue.serverTimestamp();
+    await db.collection('agenda_financeira').doc(canonicalId).set(winner,{merge:false});
+    const ids=[...new Set(lista.map(x=>x.id).filter(id=>id&&id!==canonicalId))];
+    for(const id of ids) await db.collection('agenda_financeira').doc(id).delete();
+  }
+}
+async function agReloadAgendaAuthoritative(repair=false){
+  if(!fbOk||!db){ normalizeAgendaStore(); return store.agenda; }
+  const snap=await db.collection('agenda_financeira').get();
+  const rows=snap.docs.map(d=>({id:d.id,...d.data()}));
+  if(repair) await agRepairFirebaseAgenda(rows);
+  if(repair){
+    const snap2=await db.collection('agenda_financeira').get();
+    store.agenda=agCanonicalRows(snap2.docs.map(d=>({id:d.id,...d.data()})));
+  }else{
+    store.agenda=agCanonicalRows(rows);
+  }
+  lsSave();
+  return store.agenda;
+}
 function agDuplicateManualIds(key, keepId=''){
   return (store.agenda||[]).filter(x=>agManualKey(x)===key && x.id && x.id!==keepId).map(x=>x.id);
 }
@@ -3330,7 +3487,7 @@ function agDedupManualList(list, mes=''){
   if(dupIds.length) window.__agendaDuplicateIdsToDelete=[...new Set([...(window.__agendaDuplicateIdsToDelete||[]),...dupIds])];
   return saida;
 }
-// BUILD_DEBUG_RAIZ_DRE_AGENDA_2026_07_10_1538
+// BUILD_AGENDA_MANUAL_TESTADA_2026_07_10_2135
 // Correção raiz: toda tela, total, exclusão e salvamento passam por uma chave visual única DATA+ORIGEM.
 // Isso impede que o segundo/terceiro recebimento do dia duplique os anteriores na visualização.
 function agUniqueReceiptKey(x){
@@ -3399,10 +3556,7 @@ function agUnificarItensVisiveis(items){
   return [...agRecebimentosUnicos(manuais,''),...outros].sort(agSort);
 }
 function normalizeAgendaStore(){
-  const base=store.agenda||[];
-  const outros=base.filter(raw=>(raw?.tipo||'receber')==='pagar');
-  const manuais=agRecebimentosUnicos(base.filter(raw=>(raw?.tipo||'receber')!=='pagar'),'');
-  store.agenda=[...outros,...manuais];
+  store.agenda=agCanonicalRows(store.agenda||[]);
   return store.agenda;
 }
 async function agFirebaseDuplicateIds(item, keepId=''){
@@ -3422,35 +3576,32 @@ async function agFirebaseDuplicateIds(item, keepId=''){
 }
 let agCleanupTimer=null;
 function agScheduleFirebaseCleanup(){
-  if(!fbOk||!db) return;
-  clearTimeout(agCleanupTimer);
-  agCleanupTimer=setTimeout(async()=>{
-    const ids=[...new Set(window.__agendaDuplicateIdsToDelete||[])].filter(Boolean);
-    window.__agendaDuplicateIdsToDelete=[];
-    if(!ids.length) return;
-    try{for(const id of ids){await fbDel('agenda_financeira',id);} console.log('Agenda: duplicidades antigas removidas:',ids.length);}catch(e){console.warn('Falha ao limpar duplicidades antigas da agenda:',e.message);}
-  },700);
+  // Desativado: limpeza assíncrona antiga causava corrida com o listener.
+  // A migração canônica agora ocorre de forma transacional após salvar/carregar.
 }
 async function agPersistUniqueManual(raw, oldId=''){
   const now=new Date().toISOString();
   const item=agPrepareManual({...raw,atualizado_em:now,updated_at:now});
   item.criado_em=item.criado_em||now;
-  const stableId=agStableId(item);
-  item.id=stableId;
   item.manual_key=agManualKey(item);
-  const key=item.manual_key;
-  const localIds=new Set((store.agenda||[]).filter(x=>x.id && x.id!==stableId && (x.id===oldId || agManualKey(x)===key || agUniqueReceiptKey(x)===key)).map(x=>x.id));
-  store.agenda=(store.agenda||[]).filter(x=>x.id!==stableId && !localIds.has(x.id) && agManualKey(x)!==key && agUniqueReceiptKey(x)!==key);
-  store.agenda.push(item);
-  normalizeAgendaStore();
-  lsSave();
-  if(fbOk){
-    await fbSet('agenda_financeira',stableId,{...item});
-    const firebaseIds=await agFirebaseDuplicateIds(item,stableId);
-    const apagar=[...new Set([...localIds,...firebaseIds,oldId].filter(id=>id&&id!==stableId))];
-    for(const did of apagar){await fbDel('agenda_financeira',did);}
+  const stableId=agCanonicalIdFromKey(item.manual_key);
+  item.id=stableId;
+
+  if(fbOk&&db){
+    const payload={...item};
+    delete payload.id; delete payload.__source_ids; delete payload.__dup_ids; delete payload.__all_ids;
+    payload.updated_at=firebase.firestore.FieldValue.serverTimestamp();
+    await db.collection('agenda_financeira').doc(stableId).set(payload,{merge:false});
+    // Só após a gravação confirmada, migra duplicados antigos e recarrega a coleção inteira.
+    await agReloadAgendaAuthoritative(true);
+  }else{
+    const key=item.manual_key;
+    store.agenda=(store.agenda||[]).filter(x=>agManualKey(x)!==key);
+    store.agenda.push(item);
+    normalizeAgendaStore();
+    lsSave();
   }
-  return item;
+  return (store.agenda||[]).find(x=>x.id===stableId)||item;
 }
 function agManualMesItems(mes=agendaMes){
   normalizeAgendaStore();
@@ -3545,44 +3696,47 @@ window.svAgenda=async function(id){
   const d=getAgendaD();
   if(!d.data||!d.origem||!d.valor){toast('Preencha data, origem e valor','er');return;}
   window.__agendaSaving=true;
+  const btn=document.querySelector('#mdft .bp');
+  if(btn){btn.disabled=true;btn.textContent='Salvando…';}
   try{
-    normalizeAgendaStore();
     const old=id?(store.agenda||[]).find(x=>x.id===id):null;
     const item=await agPersistUniqueManual({...old,...d},id||'');
     agendaMes=item.data.slice(0,7);
     cM();
     if(['agenda','fluxocaixa','visaogeral','dashboard','auditoria'].includes(CM)) safeRender(CM); else rAgenda();
-    toast('Recebimento manual salvo sem duplicar ✅','ok');
+    toast('Recebimento salvo uma única vez ✅','ok');
   }catch(e){
-    console.warn('Falha ao salvar agenda:',e.message);
-    lsSave();
-    toast('Salvo localmente. Firebase não confirmou agora.','in');
+    console.error('Falha ao salvar recebimento manual:',e);
+    toast('Não foi possível confirmar o salvamento no Firebase. Nada foi duplicado localmente.','er');
   }finally{
     window.__agendaSaving=false;
+    if(btn){btn.disabled=false;btn.textContent='💾 Salvar recebimento';}
   }
 };
 window.dAgenda=function(id,keyArg=''){
-  // Excluir agora é por CHAVE DATA+ORIGEM, não só por ID.
-  // Assim remove todos os duplicados antigos do mesmo dia/origem e some da tela na hora.
-  const r=(store.agenda||[]).find(x=>x.id===id) || (store.agenda||[]).find(x=>agManualKey(x)===keyArg);
+  const r=(store.agenda||[]).find(x=>x.id===id)||(store.agenda||[]).find(x=>agManualKey(x)===keyArg);
   if(!r&&!keyArg){toast('Item não encontrado para excluir','er');return;}
-  const item=agPrepareManual(r||{manual_key:keyArg,data:(keyArg||'').split('|')[0],descricao:(keyArg||'').split('|')[1]});
-  const dia=item.data || (keyArg||'').split('|')[0];
+  const item=agPrepareManual(r||{data:(keyArg||'').split('|')[0],descricao:(keyArg||'').split('|')[1]});
   const key=keyArg||agManualKey(item);
-  const ids=key?(store.agenda||[]).filter(x=>(agManualKey(x)===key||agUniqueReceiptKey(x)===key)&&x.id).map(x=>x.id):[id].filter(Boolean);
-  confirm_('Excluir recebimento manual',`Excluir ${item.descricao||'este recebimento'} de ${fmtD(dia)}?${ids.length>1?' Também serão removidas '+ids.length+' duplicidades do mesmo dia/origem.':''}`,async()=>{
-    store.agenda=(store.agenda||[]).filter(x=>agManualKey(x)!==key && agUniqueReceiptKey(x)!==key && !ids.includes(x.id));
-    normalizeAgendaStore();
-    lsSave();
-    const restantes=agAllMesItems().filter(x=>x.data===dia).sort(agSort);
-    if(restantes.length){ verAgendaDia(dia); } else { cM(); }
-    if(CM==='agenda') rAgenda(); else if(['fluxocaixa','visaogeral','dashboard','auditoria'].includes(CM)) safeRender(CM);
-    toast('Recebimento excluído sem manter duplicidade ✅','ok');
+  const dia=item.data||(key||'').split('|')[0];
+  confirm_('Excluir recebimento manual',`Excluir ${item.descricao||'este recebimento'} de ${fmtD(dia)}?`,async()=>{
     try{
-      const extra=await agFirebaseDuplicateIds(item,'');
-      for(const did of [...new Set([...ids,...extra].filter(Boolean))]){await fbDel('agenda_financeira',did);}
-      lsSave();
-    }catch(e){lsSave();}
+      if(fbOk&&db){
+        const snap=await db.collection('agenda_financeira').get();
+        const ids=snap.docs.filter(doc=>agManualKey({id:doc.id,...doc.data()})===key).map(doc=>doc.id);
+        const canonicalId=agCanonicalIdFromKey(key);
+        if(!ids.includes(canonicalId)) ids.push(canonicalId);
+        for(const did of [...new Set(ids.filter(Boolean))]) await db.collection('agenda_financeira').doc(did).delete();
+        await agReloadAgendaAuthoritative(false);
+      }else{
+        store.agenda=(store.agenda||[]).filter(x=>agManualKey(x)!==key);
+        normalizeAgendaStore();lsSave();
+      }
+      const restantes=agAllMesItems().filter(x=>x.data===dia).sort(agSort);
+      if(restantes.length) verAgendaDia(dia); else cM();
+      if(CM==='agenda') rAgenda(); else if(['fluxocaixa','visaogeral','dashboard','auditoria'].includes(CM)) safeRender(CM);
+      toast('Recebimento excluído definitivamente ✅','ok');
+    }catch(e){console.error(e);toast('Erro ao excluir no Firebase','er');}
   });
 };
 window.baixaAgenda=function(id){
@@ -3669,7 +3823,7 @@ function agSection(title,sub,items,emptyIcon='📭'){
 window.verAgendaDia=function(data){
   normalizeAgendaStore();
   agScheduleFirebaseCleanup();
-  const itens=agFinalUniqueAgendaItems(agAllMesItems().filter(x=>x.data===data),data.slice(0,7)).sort(agSort);
+  const itens=agUnificarItensVisiveis(agAllMesItems().filter(x=>x.data===data)).sort(agSort);
   const rec=agSum(itens,x=>x.tipo!=='pagar');
   const pag=agSum(itens,x=>x.tipo==='pagar');
   const pago=agSum(itens,x=>x.tipo==='pagar'&&x.status==='Baixado');
@@ -3783,186 +3937,6 @@ function rAgenda(){
   </div>`;
 }
 
-
-// ══════════════════════════════════════════════
-// HOTFIX_DEBUG_RAIZ_DRE_AGENDA_2026-07-10
-// Agenda Financeira — correção raiz real da duplicidade.
-// Princípio: nenhum recebimento manual pode aparecer, somar, salvar ou excluir sem passar por DATA+ORIGEM.
-// Essa camada final não depende dos IDs antigos do Firebase nem da forma como versões anteriores salvaram o campo origem.
-// ══════════════════════════════════════════════
-function agOrigemFinal(raw){
-  const pool=[raw?.origem_canonica,raw?.forma,raw?.descricao,raw?.origem,raw?.canal,raw?.meio,raw?.tipo_recebimento,raw?.forma_pagamento,raw?.bandeira,raw?.nome,raw?.titulo,raw?.obs,raw?.observacao];
-  const joined=pool.map(v=>String(v||'')).join(' ');
-  const n=agNorm(joined).replace(/[^a-z0-9]+/g,' ').trim();
-  if(n.includes('ifood')||n.includes('i food')) return 'iFood';
-  if(n.includes('pix')) return 'Pix';
-  if(n.includes('credito')||n.includes('cartao credito')||n.includes('cartao de credito')) return 'Crédito';
-  if(n.includes('debito')||n.includes('cartao debito')||n.includes('cartao de debito')) return 'Débito';
-  const proibidos=new Set(['','manual','agenda','agenda manual','recebimento manual','manual agenda','receber','recebimento']);
-  const fallback=pool.map(v=>String(v||'').trim()).find(v=>v&&!proibidos.has(agNorm(v)));
-  return fallback||'Recebimento manual';
-}
-function agVisualManualKey(raw){
-  if(!raw || (raw.tipo||'receber')==='pagar' || raw.source==='lancamento') return '';
-  const data=agDateKey(raw.data||raw.data_recebimento||raw.data_vencimento||raw.dt);
-  const origem=agOrigemFinal(raw);
-  return data&&origem ? data+'|'+agSlug(origem) : '';
-}
-function agStableVisualIdFromKey(key){
-  const [data,origem]=String(key||'').split('|');
-  return 'receb_'+String(data||'').replace(/[^0-9]/g,'')+'_'+agSlug(origem||'recebimento');
-}
-function agHydrateManualFinal(raw,idx=0){
-  const base=agPrepareManual(raw||{});
-  const data=agDateKey(base.data||raw?.data||raw?.data_recebimento||raw?.data_vencimento||raw?.dt);
-  const origem=agOrigemFinal(base);
-  const key=data+'|'+agSlug(origem);
-  return {
-    ...base,
-    id:base.id||agStableVisualIdFromKey(key),
-    data:data||base.data,
-    tipo:'receber',
-    source:'manual',
-    descricao:origem,
-    forma:origem,
-    origem:origem,
-    origem_canonica:origem,
-    manual_key:key,
-    status:base.status||'Baixado',
-    valor:+base.valor||0,
-    __agendaIdx:idx
-  };
-}
-function agPreferManual(a,b){
-  const at=agTs(a), bt=agTs(b);
-  if(at!==bt) return bt-at;
-  const aid=String(a.id||''), bid=String(b.id||'');
-  const ak=agVisualManualKey(a), bk=agVisualManualKey(b);
-  const ast=aid===agStableVisualIdFromKey(ak)?1:0;
-  const bst=bid===agStableVisualIdFromKey(bk)?1:0;
-  if(ast!==bst) return bst-ast;
-  return (b.__agendaIdx||0)-(a.__agendaIdx||0);
-}
-function agFinalManualRows(list,mes=''){
-  const grupos=new Map();
-  const dupIds=[];
-  (list||[]).forEach((raw,idx)=>{
-    if(!raw || (raw.tipo||'receber')==='pagar' || raw.source==='lancamento') return;
-    const r=agHydrateManualFinal(raw,idx);
-    if(mes && !String(r.data||'').startsWith(mes)) return;
-    const key=agVisualManualKey(r);
-    if(!key) return;
-    if(!grupos.has(key)) grupos.set(key,[]);
-    grupos.get(key).push(r);
-  });
-  const out=[];
-  grupos.forEach((rows,key)=>{
-    rows.sort(agPreferManual);
-    const keep={...rows[0]};
-    const stableId=agStableVisualIdFromKey(key);
-    keep.id=keep.id||stableId;
-    keep.manual_key=key;
-    keep.__all_ids=rows.map(x=>x.id).filter(Boolean);
-    keep.__dup_ids=rows.map(x=>x.id).filter(id=>id&&id!==keep.id);
-    rows.slice(1).forEach(x=>{if(x.id&&x.id!==keep.id) dupIds.push(x.id);});
-    delete keep.__agendaIdx;
-    out.push(keep);
-  });
-  if(dupIds.length) window.__agendaDuplicateIdsToDelete=[...new Set([...(window.__agendaDuplicateIdsToDelete||[]),...dupIds])];
-  return out.sort(agSort);
-}
-function agFinalUniqueAgendaItems(items,mes=''){
-  const manuais=[];
-  const outros=[];
-  (items||[]).forEach(x=>{
-    if(x && (x.tipo||'receber')!=='pagar' && x.source!=='lancamento') manuais.push(x);
-    else if(x) outros.push(x);
-  });
-  return [...agFinalManualRows(manuais,mes),...outros].sort(agSort);
-}
-normalizeAgendaStore=function(){
-  const base=store.agenda||[];
-  const pagamentos=base.filter(x=>(x?.tipo||'receber')==='pagar');
-  const manuais=agFinalManualRows(base.filter(x=>(x?.tipo||'receber')!=='pagar'),'');
-  store.agenda=[...pagamentos,...manuais];
-  return store.agenda;
-};
-agManualMesItems=function(mes=agendaMes){
-  const rows=agFinalManualRows(store.agenda||[],mes).map(r=>({
-    ...r,
-    source:'manual',
-    tipo:'receber',
-    status:r.status||'Baixado',
-    valor:+r.valor||0
-  }));
-  if(rows.some(r=>(r.__dup_ids||[]).length)) agScheduleFirebaseCleanup();
-  return rows.sort(agSort);
-};
-agAllMesItems=function(mes=agendaMes){
-  return agFinalUniqueAgendaItems([...agManualMesItems(mes),...agLancMesItems(mes)],mes).sort(agSort);
-};
-agMesItems=function(){
-  const all=agAllMesItems();
-  return agHideBaixados?all.filter(x=>x.status!=='Baixado'):all;
-};
-agFirebaseDuplicateIds=async function(item,keepId=''){
-  const ids=new Set();
-  if(!fbOk||!db||!item) return [];
-  const key=agVisualManualKey(item);
-  const scan=(snap)=>snap.docs.forEach(doc=>{
-    const row=agHydrateManualFinal({id:doc.id,...doc.data()});
-    if(doc.id!==keepId && agVisualManualKey(row)===key) ids.add(doc.id);
-  });
-  try{scan(await db.collection('agenda_financeira').get());}
-  catch(e){try{scan(await db.collection('agenda_financeira').where('data','==',item.data).get());}catch(_e){}}
-  return [...ids];
-};
-agPersistUniqueManual=async function(raw,oldId=''){
-  const now=new Date().toISOString();
-  const item=agHydrateManualFinal({...raw,atualizado_em:now,updated_at:now});
-  item.criado_em=item.criado_em||now;
-  const key=agVisualManualKey(item);
-  const stableId=agStableVisualIdFromKey(key);
-  item.id=stableId;
-  item.manual_key=key;
-  const idsLocais=(store.agenda||[]).filter(x=>x.id&&(x.id===oldId||x.id===stableId||agVisualManualKey(x)===key)).map(x=>x.id);
-  store.agenda=(store.agenda||[]).filter(x=>x.id!==stableId && x.id!==oldId && agVisualManualKey(x)!==key);
-  store.agenda.push(item);
-  normalizeAgendaStore();
-  lsSave();
-  if(fbOk&&db){
-    const payload={...item};
-    delete payload.id;delete payload.__all_ids;delete payload.__dup_ids;delete payload.__agendaIdx;
-    payload.updated_at=firebase.firestore.FieldValue.serverTimestamp();
-    await db.collection('agenda_financeira').doc(stableId).set(payload,{merge:false});
-    const idsFirebase=await agFirebaseDuplicateIds(item,stableId);
-    const apagar=[...new Set([...idsLocais,...idsFirebase,oldId].filter(id=>id&&id!==stableId))];
-    for(const did of apagar){await fbDel('agenda_financeira',did);}
-  }
-  return item;
-};
-window.dAgenda=function(id,keyArg=''){
-  const atual=(store.agenda||[]).find(x=>x.id===id) || (store.agenda||[]).find(x=>agVisualManualKey(x)===keyArg||x.manual_key===keyArg);
-  const item=agHydrateManualFinal(atual||{id,data:(keyArg||'').split('|')[0],descricao:(keyArg||'').split('|')[1],origem:(keyArg||'').split('|')[1]});
-  const key=keyArg||agVisualManualKey(item);
-  const dia=item.data || (key||'').split('|')[0];
-  const ids=(store.agenda||[]).filter(x=>x.id&&(x.id===id||agVisualManualKey(x)===key||x.manual_key===key)).map(x=>x.id);
-  confirm_('Excluir recebimento manual',`Excluir ${item.descricao||'este recebimento'} de ${fmtD(dia)}?${ids.length>1?' Também serão removidas '+ids.length+' duplicidades do mesmo dia/origem.':''}`,async()=>{
-    store.agenda=(store.agenda||[]).filter(x=>x.id!==id && !ids.includes(x.id) && agVisualManualKey(x)!==key && x.manual_key!==key);
-    normalizeAgendaStore();
-    lsSave();
-    const restantes=agFinalUniqueAgendaItems(agAllMesItems().filter(x=>x.data===dia),agendaMes).sort(agSort);
-    if(restantes.length){ verAgendaDia(dia); } else { cM(); }
-    if(CM==='agenda') rAgenda(); else if(['fluxocaixa','visaogeral','dashboard','auditoria'].includes(CM)) safeRender(CM);
-    toast('Recebimento excluído pela chave data + origem ✅','ok');
-    try{
-      const extra=await agFirebaseDuplicateIds(item,'');
-      for(const did of [...new Set([...ids,...extra].filter(Boolean))]){await fbDel('agenda_financeira',did);}
-      lsSave();
-    }catch(e){lsSave();}
-  });
-};
-
 window.render=function(m){
   try{
     CM=m;window.debouncR=()=>{clearTimeout(DT);DT=setTimeout(()=>render(m),230);};
@@ -4022,7 +3996,8 @@ window.render=function(m){
 
 <!-- BUILD_AGENDA_DEDUP_VISUAL_FIREBASE_2026_06_24_1605_END -->
 
-<!-- BUILD_DEBUG_RAIZ_DRE_AGENDA_2026_07_10_1538_END -->
+<!-- BUILD_AGENDA_MANUAL_TESTADA_2026_07_10_2135_END -->
+<!-- BUILD_AGENDA_MANUAL_TESTADA_2026_07_10_2135_END -->
 </body>
 </html>
 
