@@ -1,6 +1,7 @@
 <!DOCTYPE html>
+<!-- HOTFIX_PRESERVA_HISTORICO_PARCELADO_RECORRENTE_2026-07-16 -->
 <!-- REGRESSION_TEST_AGENDA_MANUAL_2026-07-10_2135 -->
-<!-- BUILD_LANCAMENTOS_PARCELADO_RECORRENTE_V1_2026_07_16_1815 -->
+<!-- BUILD_PRESERVA_HISTORICO_PARCELADO_RECORRENTE_V2_2026_07_16_1918 -->
 <!-- BUILD_AGENDA_DEDUP_VISUAL_FIREBASE_2026_06_24_1605 -->
 <!-- HOTFIX_AGENDA_DEDUP_VISUAL_FIREBASE_2026-06-24 -->
 <!-- HOTFIX_AGENDA_UNIQUE_KEY_DEFINITIVO_2026-06-24 -->
@@ -13,9 +14,9 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="financeiro-build" content="BUILD_LANCAMENTOS_PARCELADO_RECORRENTE_V1_2026_07_16_1815">
+<meta name="financeiro-build" content="BUILD_PRESERVA_HISTORICO_PARCELADO_RECORRENTE_V2_2026_07_16_1918">
 <script>
-window.__BUILD_ID='BUILD_LANCAMENTOS_PARCELADO_RECORRENTE_V1_2026_07_16_1815';
+window.__BUILD_ID='BUILD_PRESERVA_HISTORICO_PARCELADO_RECORRENTE_V2_2026_07_16_1918';
 (function(){
   try{
     if('serviceWorker' in navigator){
@@ -28,7 +29,7 @@ window.__BUILD_ID='BUILD_LANCAMENTOS_PARCELADO_RECORRENTE_V1_2026_07_16_1815';
 })();
 </script>
 
-<title>Financeiro — Burger do Rei | BUILD_LANCAMENTOS_PARCELADO_RECORRENTE_V1_2026_07_16_1815</title>
+<title>Financeiro — Burger do Rei | BUILD_PRESERVA_HISTORICO_PARCELADO_RECORRENTE_V2_2026_07_16_1918</title>
 <!-- HOTFIX_LANCAMENTOS_20260606_DBLCLICK_STATUS_VIEW -->
 <!-- HOTFIX_LANCAMENTOS_PAINEL_EXECUTIVO_2026-07-10 -->
 <!-- HOTFIX_RAIZ_LANCAMENTOS_SEM_DUPLICAR_2026-07-10 -->
@@ -1368,7 +1369,7 @@ let fbOk = false;
 let unsubListeners = [];
 
 // Blindagem pós-resgate: evita re-render pesado enquanto o usuário clica/digita.
-const APP_VERSION = 'BUILD_LANCAMENTOS_PARCELADO_RECORRENTE_V1_2026_07_16_1815';
+const APP_VERSION = 'BUILD_PRESERVA_HISTORICO_PARCELADO_RECORRENTE_V2_2026_07_16_1918';
 let renderTimer = null;
 let pendingRender = null;
 function modalAberto(){
@@ -2168,6 +2169,7 @@ function lancForm(r={}){
       <select id="f-sub" class="fv"><option value="">— Selecione —</option>${(r.categoria_id||r.categoria)?subOpts(r.categoria_id||r.categoria,r.subcategoria_id||r.subcategoria):''}</select></div>
     <div class="fgi full"><label class="fl">Descrição</label>
       <input id="f-ds" type="text" class="fv" value="${r.descricao||''}" placeholder="Descrição do lançamento"></div>
+    ${r.id&&(r.parcelamento_id||r.recorrencia_id)?`<div class="fgi full"><div style="padding:10px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--s2);font-size:11px;color:var(--tx2)">🔒 Histórico preservado: esta edição não recalcula nem altera automaticamente competência, vencimento, parcelas ou meses da série.</div></div>`:''}
     ${!r.id?`
     <input id="f-series-token" type="hidden" value="${lancMakeId('batch')}">
     <hr class="fsep">
@@ -2234,9 +2236,12 @@ window.svL=async function(id){
     const d=getLancD();
     const original=id?store.lancamentos.find(x=>x.id===id):null;
     const rec=id?'unica':($('f-rec')?$('f-rec').value:'unica');
-    const isRepeat=rec==='parcelada'||rec==='recorrente'||!!(original&&(original.parcelamento_id||original.recorrencia_id));
+    const isNewSeries=!id&&(rec==='parcelada'||rec==='recorrente');
 
-    if(isRepeat){
+    // Regra nova vale SOMENTE para novas séries.
+    // Parcelados/recorrentes históricos mantêm exatamente as datas já gravadas,
+    // inclusive quando um item antigo é aberto para edição.
+    if(isNewSeries){
       if(!d.data_vencimento){toast('Informe a data de vencimento.','er');return;}
       d.data_competencia=d.data_vencimento;
     }
@@ -3609,7 +3614,7 @@ function agDedupManualList(list, mes=''){
   if(dupIds.length) window.__agendaDuplicateIdsToDelete=[...new Set([...(window.__agendaDuplicateIdsToDelete||[]),...dupIds])];
   return saida;
 }
-// BUILD_LANCAMENTOS_PARCELADO_RECORRENTE_V1_2026_07_16_1815
+// BUILD_PRESERVA_HISTORICO_PARCELADO_RECORRENTE_V2_2026_07_16_1918
 // Correção raiz: toda tela, total, exclusão e salvamento passam por uma chave visual única DATA+ORIGEM.
 // Isso impede que o segundo/terceiro recebimento do dia duplique os anteriores na visualização.
 function agUniqueReceiptKey(x){
@@ -4118,7 +4123,7 @@ window.render=function(m){
 
 <!-- BUILD_AGENDA_DEDUP_VISUAL_FIREBASE_2026_06_24_1605_END -->
 
-<!-- BUILD_LANCAMENTOS_PARCELADO_RECORRENTE_V1_2026_07_16_1815_END -->
+<!-- BUILD_PRESERVA_HISTORICO_PARCELADO_RECORRENTE_V2_2026_07_16_1918_END -->
 
 </body>
 </html>
