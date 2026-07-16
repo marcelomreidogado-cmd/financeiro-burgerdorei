@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- REGRESSION_TEST_AGENDA_MANUAL_2026-07-10_2135 -->
-<!-- BUILD_AGENDA_MANUAL_TESTADA_2026_07_10_2135 -->
+<!-- BUILD_LANCAMENTOS_PARCELADO_RECORRENTE_V1_2026_07_16_1815 -->
 <!-- BUILD_AGENDA_DEDUP_VISUAL_FIREBASE_2026_06_24_1605 -->
 <!-- HOTFIX_AGENDA_DEDUP_VISUAL_FIREBASE_2026-06-24 -->
 <!-- HOTFIX_AGENDA_UNIQUE_KEY_DEFINITIVO_2026-06-24 -->
@@ -13,9 +13,9 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="financeiro-build" content="BUILD_AGENDA_MANUAL_TESTADA_2026_07_10_2135">
+<meta name="financeiro-build" content="BUILD_LANCAMENTOS_PARCELADO_RECORRENTE_V1_2026_07_16_1815">
 <script>
-window.__BUILD_ID='BUILD_AGENDA_MANUAL_TESTADA_2026_07_10_2135';
+window.__BUILD_ID='BUILD_LANCAMENTOS_PARCELADO_RECORRENTE_V1_2026_07_16_1815';
 (function(){
   try{
     if('serviceWorker' in navigator){
@@ -28,10 +28,11 @@ window.__BUILD_ID='BUILD_AGENDA_MANUAL_TESTADA_2026_07_10_2135';
 })();
 </script>
 
-<title>Financeiro — Burger do Rei | BUILD_AGENDA_MANUAL_TESTADA_2026_07_10_2135</title>
+<title>Financeiro — Burger do Rei | BUILD_LANCAMENTOS_PARCELADO_RECORRENTE_V1_2026_07_16_1815</title>
 <!-- HOTFIX_LANCAMENTOS_20260606_DBLCLICK_STATUS_VIEW -->
 <!-- HOTFIX_LANCAMENTOS_PAINEL_EXECUTIVO_2026-07-10 -->
 <!-- HOTFIX_RAIZ_LANCAMENTOS_SEM_DUPLICAR_2026-07-10 -->
+<!-- HOTFIX_PARCELADO_RECORRENTE_COMPETENCIA_VENCIMENTO_2026-07-16 -->
 <!-- HOTFIX_LANCAMENTOS_SEM_CHIPS_MESES_2026-07-10 -->
 <!-- HOTFIX_DRE_API_DESIGN_20260606 -->
 <!-- HOTFIX_AGENDA_UNIQUE_KEY_DEFINITIVO_2026-06-24 -->
@@ -1183,7 +1184,16 @@ const FP_NORM={
 };
 const normFP=v=>FP_NORM[v]||v||'—';
 
-const addMonths=(d,n)=>{const dt=new Date(d+'T12:00:00');dt.setMonth(dt.getMonth()+n);return dt.toISOString().slice(0,10);};
+const addMonths=(d,n)=>{
+  const m=String(d||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!m) return String(d||'');
+  const y=+m[1], mo=+m[2]-1, day=+m[3];
+  const total=y*12+mo+(parseInt(n,10)||0);
+  const ty=Math.floor(total/12), tm=((total%12)+12)%12;
+  const last=new Date(Date.UTC(ty,tm+1,0)).getUTCDate();
+  const td=Math.min(day,last);
+  return `${String(ty).padStart(4,'0')}-${String(tm+1).padStart(2,'0')}-${String(td).padStart(2,'0')}`;
+};
 const MES_NM=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const mesLbl=m=>{const[y,mo]=m.split('-');return`${MES_NM[+mo-1]}/${y.slice(2)}`;};
 function mesOptGroups(lista,sel=''){
@@ -1358,7 +1368,7 @@ let fbOk = false;
 let unsubListeners = [];
 
 // Blindagem pós-resgate: evita re-render pesado enquanto o usuário clica/digita.
-const APP_VERSION = 'BUILD_AGENDA_MANUAL_TESTADA_2026_07_10_2135';
+const APP_VERSION = 'BUILD_LANCAMENTOS_PARCELADO_RECORRENTE_V1_2026_07_16_1815';
 let renderTimer = null;
 let pendingRender = null;
 function modalAberto(){
@@ -1575,6 +1585,22 @@ async function fbSet(col, id, data){
   data.updated_at = firebase.firestore.FieldValue.serverTimestamp();
   await db.collection(col).doc(id).set(data, {merge:true});
 }
+async function fbSetMany(col, items){
+  if(!fbOk||!db) return;
+  const arr=(items||[]).filter(x=>x&&x.id);
+  const CHUNK=450;
+  for(let i=0;i<arr.length;i+=CHUNK){
+    const batch=db.batch();
+    arr.slice(i,i+CHUNK).forEach(item=>{
+      const clean={...item};
+      const id=clean.id;
+      delete clean.id;
+      clean.updated_at=firebase.firestore.FieldValue.serverTimestamp();
+      batch.set(db.collection(col).doc(id),clean);
+    });
+    await batch.commit();
+  }
+}
 async function fbDel(col, id){
   if(!fbOk) return;
   await db.collection(col).doc(id).delete();
@@ -1736,6 +1762,60 @@ function lancMakeId(prefix='lanc'){
   const rand=Math.random().toString(36).slice(2,9);
   return (prefix+'_'+Date.now().toString(36)+'_'+rand).replace(/[^a-zA-Z0-9_\-]/g,'_');
 }
+function lancRoundMoney(v){return Math.round((Number(v)||0)*100)/100;}
+function lancSplitInstallments(total,count){
+  const n=Math.max(1,parseInt(count,10)||1);
+  const cents=Math.round((Number(total)||0)*100);
+  const base=Math.floor(cents/n);
+  let extra=cents-(base*n);
+  return Array.from({length:n},()=>{
+    const value=base+(extra>0?1:0);
+    if(extra>0) extra--;
+    return value/100;
+  });
+}
+function lancBuildSeries(d,type,count,gid){
+  const n=Math.max(1,parseInt(count,10)||1);
+  const baseDate=lancDateKey(d?.data_vencimento);
+  if(!baseDate) throw new Error('Informe a data de vencimento.');
+  const values=type==='parcelada'?lancSplitInstallments(d.valor,n):Array.from({length:n},()=>lancRoundMoney(d.valor));
+  return Array.from({length:n},(_,i)=>{
+    const data=addMonths(baseDate,i);
+    const idx=i+1;
+    const common={
+      id:`lanc_${gid}_${String(idx).padStart(3,'0')}`,
+      ...d,
+      valor:values[i],
+      data_competencia:data,
+      data_vencimento:data,
+      creation_batch_id:gid
+    };
+    if(type==='parcelada') return {
+      ...common,
+      descricao:`${d.descricao||d.categoria} (${idx}/${n})`,
+      parcela_info:`${idx}/${n}`,
+      parcelamento_id:gid,
+      recorrente:false,
+      recorrencia_id:null
+    };
+    return {
+      ...common,
+      recorrente:true,
+      recorrencia_id:gid,
+      parcelamento_id:null,
+      parcela_info:null
+    };
+  });
+}
+let lancSaveInProgress=false;
+function lancSetSaveBusy(busy){
+  lancSaveInProgress=!!busy;
+  document.querySelectorAll('.modal .btn.bp, .mo .btn.bp').forEach(btn=>{
+    btn.disabled=!!busy;
+    if(busy){btn.dataset.originalText=btn.textContent;btn.textContent='Salvando…';}
+    else if(btn.dataset.originalText){btn.textContent=btn.dataset.originalText;delete btn.dataset.originalText;}
+  });
+}
 function lancSignature(r){
   if(!r) return '';
   return [
@@ -1797,18 +1877,24 @@ function lancScheduleFirebaseCleanup(){
   },900);
 }
 async function lancPersistMany(items){
-  const arr=(items||[]).filter(Boolean).map(x=>({id:x.id||lancMakeId('lanc'),...x}));
-  // remove qualquer item local que tenha mesma assinatura antes de inserir
-  const sigs=new Set(arr.map(lancSignature));
-  store.lancamentos=(store.lancamentos||[]).filter(x=>!sigs.has(lancSignature(x)));
-  store.lancamentos=[...arr,...store.lancamentos];
+  const unique=new Map();
+  (items||[]).filter(Boolean).forEach(raw=>{
+    const item={...raw,id:raw.id||lancMakeId('lanc')};
+    unique.set(item.id,item);
+  });
+  const arr=[...unique.values()];
+  if(!arr.length) return [];
+
+  // Primeiro grava o lote de forma atômica com os mesmos IDs definitivos.
+  // O listener pode receber o lote antes ou depois da atualização local, mas nunca cria outra linha.
+  if(fbOk) await fbSetMany('lancamentos',arr);
+
+  const byId=new Map((store.lancamentos||[]).filter(Boolean).map(x=>[x.id,x]));
+  arr.forEach(item=>byId.set(item.id,{...(byId.get(item.id)||{}),...item}));
+  store.lancamentos=[...byId.values()];
   normalizeLancamentosStore();
+  lancScheduleFirebaseCleanup();
   lsSave();
-  if(fbOk){
-    for(const item of arr){await fbSet('lancamentos',item.id,{...item});}
-    lancScheduleFirebaseCleanup();
-    lsSave();
-  }
   return arr;
 }
 
@@ -1989,11 +2075,27 @@ function subOpts(cat,sel=''){
   return ccSubsByAny(g.id).map(c=>`<option value="${agEsc(ccRowSubId(c))}" ${sid===ccRowSubId(c)?'selected':''}>${agEsc(c.subcategoria)}</option>`).join('');
 }
 window.updSub=()=>{const s=$('f-sub');if(s)s.innerHTML='<option value="">— Selecione —</option>'+subOpts($('f-cat').value);};
+window.syncLancDatesForRepeat=()=>{
+  const tp=$('f-rec')?$('f-rec').value:'unica';
+  const dc=$('f-dc'), dv=$('f-dv');
+  if(!dc||!dv) return;
+  const repeat=tp==='parcelada'||tp==='recorrente';
+  if(repeat){
+    if(!dv.value&&dc.value) dv.value=dc.value;
+    if(dv.value) dc.value=dv.value;
+    dc.disabled=true;
+    dc.title='No parcelado e no recorrente, a competência é igual ao vencimento.';
+  }else{
+    dc.disabled=false;
+    dc.title='';
+  }
+};
 window.toggleRecurr=()=>{
   const tp=$('f-rec').value;
   const ep=$('rec-parc'), er=$('rec-recorr');
   if(ep) ep.style.display=tp==='parcelada'?'block':'none';
   if(er) er.style.display=tp==='recorrente'?'block':'none';
+  syncLancDatesForRepeat();
   previewDatas();
 };
 
@@ -2006,16 +2108,23 @@ window.previewDatas=()=>{
 
   if(tp==='parcelada'){
     const np=parseInt(($('f-np')||{value:2}).value)||2;
-    const valParc=vl/np;
+    const valores=lancSplitInstallments(vl,np);
     const pc=$('parc-valor-calc');
-    if(pc) pc.textContent=vl?('R$ '+valParc.toFixed(2).replace('.',',')):'—';
+    if(pc){
+      if(!vl) pc.textContent='—';
+      else{
+        const min=Math.min(...valores), max=Math.max(...valores);
+        pc.textContent=min===max?fmt(min):`${fmt(min)} a ${fmt(max)}`;
+      }
+    }
     const prev=$('preview-parc');
     if(!prev) return;
     if(!dv){ prev.innerHTML='<span style="color:var(--wa)">⚠️ Informe a data de vencimento para ver as datas</span>'; return; }
     const datas=[];
     for(let i=0;i<Math.min(np,6);i++){
-      const d=new Date(dv+'T12:00:00');d.setMonth(d.getMonth()+i);
-      datas.push(d.getDate().toString().padStart(2,'0')+'/'+MN[d.getMonth()]+'/'+d.getFullYear());
+      const date=addMonths(dv,i);
+      const [yy,mm,dd]=date.split('-');
+      datas.push(`${dd}/${MN[+mm-1]}/${yy}`);
     }
     const extra=np>6?' + '+(np-6)+' mais…':'';
     prev.innerHTML='<strong>Parcelas geradas:</strong> '+datas.join(' · ')+extra;
@@ -2029,8 +2138,9 @@ window.previewDatas=()=>{
     if(!base){ prev.innerHTML='<span style="color:var(--wa)">⚠️ Informe a data de vencimento para ver as datas</span>'; return; }
     const datas=[];
     for(let i=0;i<Math.min(nm,6);i++){
-      const d=new Date(base+'T12:00:00');d.setMonth(d.getMonth()+i);
-      datas.push(d.getDate().toString().padStart(2,'0')+'/'+MN[d.getMonth()]+'/'+d.getFullYear());
+      const date=addMonths(base,i);
+      const [yy,mm,dd]=date.split('-');
+      datas.push(`${dd}/${MN[+mm-1]}/${yy}`);
     }
     const extra=nm>6?' + '+(nm-6)+' mais…':'';
     prev.innerHTML='<strong>'+nm+' lançamentos:</strong> '+datas.join(' · ')+extra;
@@ -2045,9 +2155,9 @@ function lancForm(r={}){
     <div class="fgi"><label class="fl">Status</label>
       <select id="f-st" class="fv"><option value="Pendente" ${(r.status||'Pendente')==='Pendente'?'selected':''}>⏳ Pendente</option><option value="Concluído" ${r.status==='Concluído'?'selected':''}>✓ Concluído</option></select></div>
     <div class="fgi"><label class="fl">Data de Competência <span class="rq">*</span></label>
-      <input id="f-dc" type="date" class="fv" value="${r.data_competencia||today()}"></div>
+      <input id="f-dc" type="date" class="fv" value="${r.data_competencia||today()}" onchange="syncLancDatesForRepeat();previewDatas()"></div>
     <div class="fgi"><label class="fl">Data de Vencimento</label>
-      <input id="f-dv" type="date" class="fv" value="${r.data_vencimento||''}" onchange="previewDatas()"></div>
+      <input id="f-dv" type="date" class="fv" value="${r.data_vencimento||''}" onchange="syncLancDatesForRepeat();previewDatas()"></div>
     <div class="fgi"><label class="fl">Valor <span class="rq">*</span></label>
       <input id="f-vl" type="number" step="0.01" min="0" class="fv" value="${r.valor||''}" placeholder="0,00" oninput="previewDatas()"></div>
     <div class="fgi"><label class="fl">Forma de Pagamento</label>
@@ -2059,6 +2169,7 @@ function lancForm(r={}){
     <div class="fgi full"><label class="fl">Descrição</label>
       <input id="f-ds" type="text" class="fv" value="${r.descricao||''}" placeholder="Descrição do lançamento"></div>
     ${!r.id?`
+    <input id="f-series-token" type="hidden" value="${lancMakeId('batch')}">
     <hr class="fsep">
     <div class="fgi full">
       <label class="fl">Tipo de Lançamento</label>
@@ -2117,52 +2228,63 @@ function getLancD(){
 window.nL=()=>oM('Novo Lançamento',lancForm(),`<button class="btn bs" onclick="cM()">Cancelar</button><button class="btn bp" onclick="svL(null)">💾 Salvar</button>`,true);
 window.eL=id=>{const r=store.lancamentos.find(x=>x.id===id);oM('Editar Lançamento',lancForm(r),`<button class="btn bs" onclick="cM()">Cancelar</button><button class="btn bp" onclick="svL('${id}')">💾 Atualizar</button>`,true);};
 window.svL=async function(id){
-  const d=getLancD();
-  if(!d.data_competencia||!d.valor||!d.categoria){toast('Preencha campos obrigatórios','er');return;}
-  if(id){
-    const i=store.lancamentos.findIndex(x=>x.id===id);
-    if(i>=0) store.lancamentos[i]={...store.lancamentos[i],...d};
-    normalizeLancamentosStore();
-    cM(); render(CM); toast('Atualizado! ✅','ok');
-    try{ if(i>=0) await fbSet('lancamentos',id,d); lsSave(); }catch(e){ lsSave(); }
-  } else {
-    const rec=$('f-rec')?$('f-rec').value:'unica';
-    if(rec==='parcelada'){
-      const np=parseInt(($('f-np')||{value:2}).value)||2;
-      const gid=lancMakeId('parc');
-      const novos=[];
-      for(let i=0;i<np;i++){
-        const dc=addMonths(d.data_competencia,i);
-        const dv=d.data_vencimento?addMonths(d.data_vencimento,i):null;
-        novos.push({id:`lanc_${gid}_${i+1}`,...d,data_competencia:dc,data_vencimento:dv,descricao:`${d.descricao||d.categoria} (${i+1}/${np})`,parcela_info:`${i+1}/${np}`,parcelamento_id:gid});
-      }
-      await lancPersistMany(novos);
-      toast(`${np} parcelas criadas sem duplicar!`,'ok');
-    } else if(rec==='recorrente'){
-      const nm=parseInt(($('f-nm')||{value:12}).value)||12;
-      const gid=lancMakeId('rec');
-      const novos=[];
-      for(let i=0;i<nm;i++){
-        const dc=addMonths(d.data_competencia,i);
-        const dv=d.data_vencimento?addMonths(d.data_vencimento,i):null;
-        novos.push({id:`lanc_${gid}_${i+1}`,...d,data_competencia:dc,data_vencimento:dv,recorrente:true,recorrencia_id:gid});
-      }
-      await lancPersistMany(novos);
-      toast(`${nm} meses recorrentes criados sem duplicar!`,'ok');
-    } else {
-      const novo={id:lancMakeId('lanc'),...d};
+  if(lancSaveInProgress){toast('Aguarde: o lançamento ainda está sendo salvo.','in');return;}
+  lancSetSaveBusy(true);
+  try{
+    const d=getLancD();
+    const original=id?store.lancamentos.find(x=>x.id===id):null;
+    const rec=id?'unica':($('f-rec')?$('f-rec').value:'unica');
+    const isRepeat=rec==='parcelada'||rec==='recorrente'||!!(original&&(original.parcelamento_id||original.recorrencia_id));
+
+    if(isRepeat){
+      if(!d.data_vencimento){toast('Informe a data de vencimento.','er');return;}
+      d.data_competencia=d.data_vencimento;
+    }
+    if(!d.data_competencia||!d.valor||!d.categoria){toast('Preencha campos obrigatórios','er');return;}
+
+    if(id){
+      const i=store.lancamentos.findIndex(x=>x.id===id);
+      if(i<0) throw new Error('Lançamento não encontrado.');
+      const atualizado={...store.lancamentos[i],...d,id};
+      await lancPersistMany([atualizado]);
       cM();
+      render(CM);
+      toast('Atualizado! ✅','ok');
+    } else if(rec==='parcelada'){
+      const np=Math.max(2,Math.min(60,parseInt(($('f-np')||{value:2}).value,10)||2));
+      const gid=($('f-series-token')?.value)||lancMakeId('parc');
+      const novos=lancBuildSeries(d,'parcelada',np,gid);
+      await lancPersistMany(novos);
+      cM();
+      toast(`${np} parcelas criadas. Total dividido corretamente. ✅`,'ok');
+    } else if(rec==='recorrente'){
+      const nm=Math.max(2,Math.min(60,parseInt(($('f-nm')||{value:12}).value,10)||12));
+      const gid=($('f-series-token')?.value)||lancMakeId('rec');
+      const novos=lancBuildSeries(d,'recorrente',nm,gid);
+      await lancPersistMany(novos);
+      cM();
+      toast(`${nm} meses recorrentes criados uma única vez. ✅`,'ok');
+    } else {
+      const token=($('f-series-token')?.value)||lancMakeId('lanc');
+      const novo={id:`lanc_${token}`,...d,creation_batch_id:token};
       await lancPersistMany([novo]);
+      cM();
       render(CM);
       toast('Criado sem duplicar! ✅','ok');
     }
+
+    if(CM==='auditoria') rAuditoria();
+    else if(CM==='agenda') rAgenda();
+    else if(CM==='fluxocaixa') rFluxo();
+    else rLanc();
+  }catch(e){
+    console.error('Falha ao salvar lançamento:',e);
+    toast('Não foi possível salvar: '+(e?.message||'erro desconhecido'),'er');
+  }finally{
+    lancSetSaveBusy(false);
   }
-  cM();
-  if(CM==='auditoria') rAuditoria();
-  else if(CM==='agenda') rAgenda();
-  else if(CM==='fluxocaixa') rFluxo();
-  else rLanc();
 };
+
 window.dL=async function(id){
   const r=store.lancamentos.find(x=>x.id===id);
   const hasGrp=r&&(r.parcelamento_id||r.recorrencia_id);
@@ -3487,7 +3609,7 @@ function agDedupManualList(list, mes=''){
   if(dupIds.length) window.__agendaDuplicateIdsToDelete=[...new Set([...(window.__agendaDuplicateIdsToDelete||[]),...dupIds])];
   return saida;
 }
-// BUILD_AGENDA_MANUAL_TESTADA_2026_07_10_2135
+// BUILD_LANCAMENTOS_PARCELADO_RECORRENTE_V1_2026_07_16_1815
 // Correção raiz: toda tela, total, exclusão e salvamento passam por uma chave visual única DATA+ORIGEM.
 // Isso impede que o segundo/terceiro recebimento do dia duplique os anteriores na visualização.
 function agUniqueReceiptKey(x){
@@ -3996,8 +4118,8 @@ window.render=function(m){
 
 <!-- BUILD_AGENDA_DEDUP_VISUAL_FIREBASE_2026_06_24_1605_END -->
 
-<!-- BUILD_AGENDA_MANUAL_TESTADA_2026_07_10_2135_END -->
-<!-- BUILD_AGENDA_MANUAL_TESTADA_2026_07_10_2135_END -->
+<!-- BUILD_LANCAMENTOS_PARCELADO_RECORRENTE_V1_2026_07_16_1815_END -->
+
 </body>
 </html>
 
