@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- HOTFIX_PRESERVA_HISTORICO_PARCELADO_RECORRENTE_2026-07-16 -->
 <!-- REGRESSION_TEST_AGENDA_MANUAL_2026-07-10_2135 -->
-<!-- BUILD_PRESERVA_HISTORICO_PARCELADO_RECORRENTE_V2_2026_07_16_1918 -->
+<!-- BUILD_FINANCEIRO_UNIFICADO_SYNC_SERIES_AGENDA_2026_09_01_1115 -->
 <!-- BUILD_AGENDA_DEDUP_VISUAL_FIREBASE_2026_06_24_1605 -->
 <!-- HOTFIX_AGENDA_DEDUP_VISUAL_FIREBASE_2026-06-24 -->
 <!-- HOTFIX_AGENDA_UNIQUE_KEY_DEFINITIVO_2026-06-24 -->
@@ -14,9 +14,9 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="financeiro-build" content="BUILD_PRESERVA_HISTORICO_PARCELADO_RECORRENTE_V2_2026_07_16_1918">
+<meta name="financeiro-build" content="BUILD_FINANCEIRO_UNIFICADO_SYNC_SERIES_AGENDA_2026_09_01_1115">
 <script>
-window.__BUILD_ID='BUILD_PRESERVA_HISTORICO_PARCELADO_RECORRENTE_V2_2026_07_16_1918';
+window.__BUILD_ID='BUILD_FINANCEIRO_UNIFICADO_SYNC_SERIES_AGENDA_2026_09_01_1115';
 (function(){
   try{
     if('serviceWorker' in navigator){
@@ -29,7 +29,7 @@ window.__BUILD_ID='BUILD_PRESERVA_HISTORICO_PARCELADO_RECORRENTE_V2_2026_07_16_1
 })();
 </script>
 
-<title>Financeiro — Burger do Rei | BUILD_PRESERVA_HISTORICO_PARCELADO_RECORRENTE_V2_2026_07_16_1918</title>
+<title>Financeiro — Burger do Rei | BUILD_FINANCEIRO_UNIFICADO_SYNC_SERIES_AGENDA_2026_09_01_1115</title>
 <!-- HOTFIX_LANCAMENTOS_20260606_DBLCLICK_STATUS_VIEW -->
 <!-- HOTFIX_LANCAMENTOS_PAINEL_EXECUTIVO_2026-07-10 -->
 <!-- HOTFIX_RAIZ_LANCAMENTOS_SEM_DUPLICAR_2026-07-10 -->
@@ -1369,7 +1369,7 @@ let fbOk = false;
 let unsubListeners = [];
 
 // Blindagem pós-resgate: evita re-render pesado enquanto o usuário clica/digita.
-const APP_VERSION = 'BUILD_PRESERVA_HISTORICO_PARCELADO_RECORRENTE_V2_2026_07_16_1918';
+const APP_VERSION = 'BUILD_FINANCEIRO_UNIFICADO_SYNC_SERIES_AGENDA_2026_09_01_1115';
 let renderTimer = null;
 let pendingRender = null;
 function modalAberto(){
@@ -1460,8 +1460,14 @@ function setStatus(txt, color){
 async function loadAll(){
   setStatus('● Conectando…','var(--wa)');
   try {
-    const [lSnap,ccSnap,patSnap,cfgSnap,cmSnap] = await Promise.all([
-      db.collection('lancamentos').orderBy('data_competencia','desc').get(),
+    // Fonte única: sempre encerra listeners antigos antes de reconstruir a sessão.
+    unsubListeners.forEach(u=>{try{u();}catch(_e){}});
+    unsubListeners=[];
+
+    // Coleções auxiliares carregam uma vez. Lançamentos entram diretamente pelo listener
+    // autoritativo abaixo, evitando GET + listener duplicado e garantindo exclusões/edições
+    // instantâneas entre computadores sem depender do relógio local.
+    const [ccSnap,patSnap,cfgSnap,cmSnap] = await Promise.all([
       db.collection('centrocusto').get(),
       db.collection('patrimonio').get(),
       db.collection('config').get(),
@@ -1470,62 +1476,62 @@ async function loadAll(){
     let agSnap = null;
     try { agSnap = await db.collection('agenda_financeira').get(); }
     catch(e){ console.warn('Agenda ainda não disponível no Firebase:', e.message); }
-    store.lancamentos  = lSnap.docs.map(d=>({id:d.id,...d.data()}));
-    normalizeLancamentosStore();
-    lancScheduleFirebaseCleanup();
+
     store.centrocusto  = ccSnap.docs.map(d=>({id:d.id,...d.data()}));
     store.patrimonio   = patSnap.docs.map(d=>({id:d.id,...d.data()}));
-    const agendaRows = agSnap ? agSnap.docs.map(d=>({id:d.id,...d.data()})) : (store.agenda||[]);
+    const agendaRows = agSnap ? agSnap.docs.map(d=>({id:d.id,...d.data()})) : [];
     store.agenda = agCanonicalRows(agendaRows);
-    if(agSnap){ try{ await agRepairFirebaseAgenda(agendaRows); }catch(e){ console.warn('Reparo inicial da Agenda não concluído:',e.message); } }
+    // Não executa mais reparo físico global no carregamento: isso competia com novos salvamentos.
+    // A tela já canonicaliza os dados e cada chave usada é limpa em segundo plano após salvar/excluir.
     store.clientes_mes = {};
     cmSnap.docs.forEach(d=>{ store.clientes_mes[d.id]=d.data().count||0; });
     if(cfgSnap.docs.length) store.cfg = {...store.cfg,...cfgSnap.docs[0].data()};
     ccEnsureIds({persist:false});
-    lsSave();
-    setStatus('● '+store.lancamentos.length+' lanç. | online','var(--ok)');
+
+    // Primeiro snapshot de Lançamentos é o próprio carregamento inicial e continua ativo
+    // como sincronismo em tempo real. Isso elimina a janela em que outro computador alterava
+    // um lançamento e este navegador não recebia a mudança.
+    await new Promise((resolve,reject)=>{
+      let first=true;
+      const unsubLanc=db.collection('lancamentos').onSnapshot(snap=>{
+        store.lancamentos=snap.docs.map(d=>({id:d.id,...d.data()}));
+        normalizeLancamentosStore();
+        lsSave();
+        setStatus('● '+store.lancamentos.length+' lanç. | online','var(--ok)');
+        if(first){
+          first=false;
+          // Séries novas possuem metadados suficientes para autorreparo sem alterar histórico antigo.
+          lancRepairManagedSeries().catch(e=>console.warn('Autorreparo de séries não concluído:',e.message));
+          resolve(true);
+        }else{
+          if(CM) safeRender(CM);
+          lancRepairManagedSeries().catch(e=>console.warn('Autorreparo de séries não concluído:',e.message));
+        }
+      },err=>{
+        console.warn('Sync de lançamentos offline:',err.message);
+        setStatus('● online sem tempo real','var(--wa)');
+        if(first){first=false;reject(err);}
+      });
+      unsubListeners.push(unsubLanc);
+    });
+
     setupRealtimeSync();
+    lsSave();
     return true;
   } catch(e){
     setStatus('● offline','var(--er)');
-    toast('Firebase offline — usando dados locais','in');
+    toast('Firebase offline — alterações foram bloqueadas para evitar divergência entre computadores','er');
     return false;
   }
 }
 
 // ── Sync em tempo real (multi-usuário) ────────────────
 function setupRealtimeSync(){
-  unsubListeners.forEach(u=>u());
-  unsubListeners = [];
-  // lancamentos em tempo real, sem reler a coleção inteira no listener.
-  // O carregamento completo acontece uma vez no loadAll(); depois escutamos só alterações novas.
-  let sinceTs = null;
-  try{ sinceTs = firebase.firestore.Timestamp.fromDate(new Date(Date.now()-120000)); }catch(_e){}
-  const lancRef = sinceTs ? db.collection('lancamentos').where('updated_at','>',sinceTs) : db.collection('lancamentos').limit(1);
-  const unsub = lancRef.onSnapshot(snap=>{
-      let mudou=false;
-      snap.docChanges().forEach(ch=>{
-        const d={id:ch.doc.id,...ch.doc.data()};
-        if(ch.type==='added'||ch.type==='modified'){
-          const i=store.lancamentos.findIndex(x=>x.id===d.id);
-          if(i>=0) store.lancamentos[i]=d; else store.lancamentos.unshift(d);
-          mudou=true;
-        } else if(ch.type==='removed'){
-          store.lancamentos=store.lancamentos.filter(x=>x.id!==ch.doc.id);
-          mudou=true;
-        }
-      });
-      if(!mudou) return;
-      normalizeLancamentosStore();
-      lancScheduleFirebaseCleanup();
-      lsSave();
-      setStatus('● '+store.lancamentos.length+' lanç. | online','var(--ok)');
-      if(CM) safeRender(CM);
-    }, err=>{ console.warn('Sync econômico de lançamentos offline:',err.message); setStatus('● online sem tempo real','var(--wa)'); });
-  unsubListeners.push(unsub);
+  // Lançamentos já têm listener autoritativo criado no loadAll().
 
-  // Agenda manual em tempo real: o snapshot COMPLETO substitui o estado local.
-  // Não mescla docChanges com cache antigo; isso elimina o efeito cascata que duplicava ao fechar/atualizar.
+  // Agenda manual em tempo real: snapshot completo = estado autoritativo.
+  // Nunca faz merge incremental com cache/localStorage; portanto fechar, atualizar ou entrar
+  // novamente não multiplica recebimentos existentes.
   const unsubAgenda = db.collection('agenda_financeira').onSnapshot(snap=>{
     const rows=snap.docs.map(d=>({id:d.id,...d.data()}));
     store.agenda=agCanonicalRows(rows);
@@ -1536,15 +1542,7 @@ function setupRealtimeSync(){
 
   // plano de contas em tempo real
   const unsubCC = db.collection('centrocusto').onSnapshot(snap=>{
-    snap.docChanges().forEach(ch=>{
-      const d={id:ch.doc.id,...ch.doc.data()};
-      if(ch.type==='added'||ch.type==='modified'){
-        const i=store.centrocusto.findIndex(x=>x.id===d.id);
-        if(i>=0) store.centrocusto[i]=d; else store.centrocusto.push(d);
-      } else if(ch.type==='removed'){
-        store.centrocusto=store.centrocusto.filter(x=>x.id!==ch.doc.id);
-      }
-    });
+    store.centrocusto=snap.docs.map(d=>({id:d.id,...d.data()}));
     ccEnsureIds();
     lsSave();
     if(['centrocusto','lancamentos','dashboard','visaogeral','dre','auditoria'].includes(CM)) safeRender(CM);
@@ -1567,7 +1565,7 @@ function setupRealtimeSync(){
   unsubListeners.push(unsubPat);
 
   const unsubCfg = db.collection('config').onSnapshot(snap=>{
-    if(snap.docs.length){ store.cfg={...store.cfg,...snap.docs[0].data()}; lsSave(); if(['config','fluxocaixa'].includes(CM)) render(CM); }
+    if(snap.docs.length){ store.cfg={...store.cfg,...snap.docs[0].data()}; lsSave(); if(['config','fluxocaixa'].includes(CM)) safeRender(CM); }
   }, err=>console.warn('Config offline:',err.message));
   unsubListeners.push(unsubCfg);
 }
@@ -1779,35 +1777,114 @@ function lancBuildSeries(d,type,count,gid){
   const n=Math.max(1,parseInt(count,10)||1);
   const baseDate=lancDateKey(d?.data_vencimento);
   if(!baseDate) throw new Error('Informe a data de vencimento.');
-  const values=type==='parcelada'?lancSplitInstallments(d.valor,n):Array.from({length:n},()=>lancRoundMoney(d.valor));
+  const baseDesc=(d.descricao_base||d.descricao||d.categoria||'Lançamento').trim();
+  const originalTotal=lancRoundMoney(d.valor);
+  const values=type==='parcelada'
+    ? lancSplitInstallments(originalTotal,n)
+    : Array.from({length:n},()=>originalTotal);
+
   return Array.from({length:n},(_,i)=>{
     const data=addMonths(baseDate,i);
     const idx=i+1;
     const common={
-      id:`lanc_${gid}_${String(idx).padStart(3,'0')}`,
       ...d,
+      id:`lanc_${gid}_${String(idx).padStart(3,'0')}`,
       valor:values[i],
       data_competencia:data,
       data_vencimento:data,
-      creation_batch_id:gid
+      creation_batch_id:gid,
+      serie_tipo:type,
+      serie_total:n,
+      serie_indice:idx,
+      serie_base_vencimento:baseDate,
+      descricao_base:baseDesc
     };
     if(type==='parcelada') return {
       ...common,
-      descricao:`${d.descricao||d.categoria} (${idx}/${n})`,
+      descricao:`${baseDesc} (${idx}/${n})`,
       parcela_info:`${idx}/${n}`,
       parcelamento_id:gid,
       recorrente:false,
-      recorrencia_id:null
+      recorrencia_id:null,
+      serie_valor_total:originalTotal,
+      serie_valor_unitario:null
     };
     return {
       ...common,
+      descricao:baseDesc,
       recorrente:true,
       recorrencia_id:gid,
       parcelamento_id:null,
-      parcela_info:null
+      parcela_info:null,
+      serie_valor_total:null,
+      serie_valor_unitario:originalTotal
     };
   });
 }
+
+function lancSeriesId(r){return r?.parcelamento_id||r?.recorrencia_id||r?.creation_batch_id||'';}
+function lancManagedSeriesMeta(rows){
+  const lista=(rows||[]).filter(Boolean);
+  const seed=lista.find(r=>r.serie_total&&r.serie_base_vencimento&&r.serie_tipo);
+  if(!seed) return null;
+  const total=Math.max(1,parseInt(seed.serie_total,10)||1);
+  const type=seed.serie_tipo;
+  const gid=lancSeriesId(seed);
+  if(!gid || !['parcelada','recorrente'].includes(type) || total<2) return null;
+  const baseDate=lancDateKey(seed.serie_base_vencimento);
+  if(!baseDate) return null;
+  const originalValue=type==='parcelada'
+    ? lancRoundMoney(seed.serie_valor_total)
+    : lancRoundMoney(seed.serie_valor_unitario||seed.valor);
+  if(!(originalValue>0)) return null;
+  const base={...seed};
+  delete base.id; delete base.updated_at; delete base.parcela_info;
+  delete base.parcelamento_id; delete base.recorrencia_id; delete base.recorrente;
+  delete base.creation_batch_id; delete base.serie_tipo; delete base.serie_total;
+  delete base.serie_indice; delete base.serie_base_vencimento; delete base.serie_valor_total;
+  delete base.serie_valor_unitario;
+  base.valor=originalValue;
+  base.data_vencimento=baseDate;
+  base.data_competencia=baseDate;
+  base.descricao=seed.descricao_base||seed.descricao||seed.categoria||'Lançamento';
+  base.descricao_base=seed.descricao_base||base.descricao;
+  return {gid,type,total,base};
+}
+
+let lancSeriesRepairRunning=false;
+async function lancRepairManagedSeries(){
+  if(lancSeriesRepairRunning||!fbOk||!db) return [];
+  lancSeriesRepairRunning=true;
+  try{
+    const groups=new Map();
+    (store.lancamentos||[]).forEach(r=>{
+      const gid=lancSeriesId(r);
+      if(!gid) return;
+      if(!groups.has(gid)) groups.set(gid,[]);
+      groups.get(gid).push(r);
+    });
+    const missing=[];
+    for(const [,rows] of groups){
+      const meta=lancManagedSeriesMeta(rows);
+      if(!meta) continue; // histórico antigo sem metadados permanece intocado.
+      const expected=lancBuildSeries(meta.base,meta.type,meta.total,meta.gid);
+      const ids=new Set(rows.map(r=>r.id));
+      expected.forEach(r=>{if(!ids.has(r.id)) missing.push(r);});
+    }
+    if(!missing.length) return [];
+    await fbSetMany('lancamentos',missing);
+    const byId=new Map((store.lancamentos||[]).map(x=>[x.id,x]));
+    missing.forEach(x=>byId.set(x.id,x));
+    store.lancamentos=[...byId.values()];
+    normalizeLancamentosStore();
+    lsSave();
+    console.log('Séries: ocorrências ausentes restauradas:',missing.length);
+    return missing;
+  }finally{
+    lancSeriesRepairRunning=false;
+  }
+}
+
 let lancSaveInProgress=false;
 function lancSetSaveBusy(busy){
   lancSaveInProgress=!!busy;
@@ -1885,17 +1962,21 @@ async function lancPersistMany(items){
   });
   const arr=[...unique.values()];
   if(!arr.length) return [];
+  if(!fbOk||!db) throw new Error('Firebase indisponível. O lançamento não foi salvo para evitar divergência entre computadores.');
 
-  // Primeiro grava o lote de forma atômica com os mesmos IDs definitivos.
-  // O listener pode receber o lote antes ou depois da atualização local, mas nunca cria outra linha.
-  if(fbOk) await fbSetMany('lancamentos',arr);
+  // Firestore batch é atômico: ou todo o lote entra, ou nenhum entra.
+  // IDs determinísticos impedem duplo clique/repetição de criar documentos extras.
+  await fbSetMany('lancamentos',arr);
 
   const byId=new Map((store.lancamentos||[]).filter(Boolean).map(x=>[x.id,x]));
   arr.forEach(item=>byId.set(item.id,{...(byId.get(item.id)||{}),...item}));
   store.lancamentos=[...byId.values()];
   normalizeLancamentosStore();
-  lancScheduleFirebaseCleanup();
   lsSave();
+
+  // Verificação interna da série recém-criada: o estado local precisa conter cada ID gravado.
+  const faltando=arr.filter(item=>!(store.lancamentos||[]).some(x=>x.id===item.id));
+  if(faltando.length) throw new Error(`Falha de consistência: ${faltando.length} ocorrência(s) não permaneceram na série.`);
   return arr;
 }
 
@@ -3614,7 +3695,7 @@ function agDedupManualList(list, mes=''){
   if(dupIds.length) window.__agendaDuplicateIdsToDelete=[...new Set([...(window.__agendaDuplicateIdsToDelete||[]),...dupIds])];
   return saida;
 }
-// BUILD_PRESERVA_HISTORICO_PARCELADO_RECORRENTE_V2_2026_07_16_1918
+// BUILD_FINANCEIRO_UNIFICADO_SYNC_SERIES_AGENDA_2026_09_01_1115
 // Correção raiz: toda tela, total, exclusão e salvamento passam por uma chave visual única DATA+ORIGEM.
 // Isso impede que o segundo/terceiro recebimento do dia duplique os anteriores na visualização.
 function agUniqueReceiptKey(x){
@@ -3703,33 +3784,66 @@ async function agFirebaseDuplicateIds(item, keepId=''){
 }
 let agCleanupTimer=null;
 function agScheduleFirebaseCleanup(){
-  // Desativado: limpeza assíncrona antiga causava corrida com o listener.
-  // A migração canônica agora ocorre de forma transacional após salvar/carregar.
+  // Reparo visual é imediato pela chave canônica. A limpeza física é feita em segundo plano
+  // por dia/origem e nunca bloqueia o botão Salvar.
+}
+const agCleanupKeysRunning=new Set();
+function agCleanupManualKeyBackground(item,keepId){
+  if(!fbOk||!db||!item?.data) return;
+  const key=agManualKey(item);
+  if(!key||agCleanupKeysRunning.has(key)) return;
+  agCleanupKeysRunning.add(key);
+  setTimeout(async()=>{
+    try{
+      const ids=new Set();
+      const scan=snap=>snap.docs.forEach(doc=>{
+        const row=agPrepareManual({id:doc.id,...doc.data()});
+        if(doc.id!==keepId && agManualKey(row)===key) ids.add(doc.id);
+      });
+      // Busca por data é pequena e captura documentos legados que não tinham manual_key.
+      try{scan(await db.collection('agenda_financeira').where('data','==',item.data).get());}catch(_e){}
+      try{scan(await db.collection('agenda_financeira').where('manual_key','==',key).get());}catch(_e){}
+      if(ids.size){
+        const batch=db.batch();
+        [...ids].forEach(id=>batch.delete(db.collection('agenda_financeira').doc(id)));
+        await batch.commit();
+        console.log('Agenda: duplicidades físicas removidas em segundo plano:',ids.size,key);
+      }
+    }catch(e){console.warn('Agenda: limpeza física adiada:',e.message);}
+    finally{agCleanupKeysRunning.delete(key);}
+  },80);
 }
 async function agPersistUniqueManual(raw, oldId=''){
+  if(!fbOk||!db) throw new Error('Firebase indisponível. O recebimento não foi salvo para evitar divergência entre computadores.');
+
   const now=new Date().toISOString();
-  const item=agPrepareManual({...raw,atualizado_em:now,updated_at:now});
+  const item=agPrepareManual({...raw,atualizado_em:now});
   item.criado_em=item.criado_em||now;
   item.manual_key=agManualKey(item);
+  if(!item.manual_key) throw new Error('Não foi possível identificar data e origem do recebimento.');
   const stableId=agCanonicalIdFromKey(item.manual_key);
   item.id=stableId;
 
-  if(fbOk&&db){
-    const payload={...item};
-    delete payload.id; delete payload.__source_ids; delete payload.__dup_ids; delete payload.__all_ids;
-    payload.updated_at=firebase.firestore.FieldValue.serverTimestamp();
-    await db.collection('agenda_financeira').doc(stableId).set(payload,{merge:false});
-    // Só após a gravação confirmada, migra duplicados antigos e recarrega a coleção inteira.
-    await agReloadAgendaAuthoritative(true);
-  }else{
-    const key=item.manual_key;
-    store.agenda=(store.agenda||[]).filter(x=>agManualKey(x)!==key);
-    store.agenda.push(item);
-    normalizeAgendaStore();
-    lsSave();
-  }
+  const payload={...item};
+  delete payload.id; delete payload.__source_ids; delete payload.__dup_ids; delete payload.__all_ids;
+  payload.updated_at=firebase.firestore.FieldValue.serverTimestamp();
+
+  // Uma única escrita no documento determinístico DATA+ORIGEM.
+  // Não relê nem repara a coleção inteira durante o salvamento.
+  await db.collection('agenda_financeira').doc(stableId).set(payload,{merge:false});
+
+  // Atualização local idempotente. O onSnapshot completo confirmará o mesmo estado logo em seguida.
+  const key=item.manual_key;
+  store.agenda=(store.agenda||[]).filter(x=>agManualKey(x)!==key);
+  store.agenda.push(item);
+  store.agenda=agCanonicalRows(store.agenda);
+  lsSave();
+
+  // Duplicados legados são excluídos sem atrasar o usuário e sem interferir no listener.
+  agCleanupManualKeyBackground(item,stableId);
   return (store.agenda||[]).find(x=>x.id===stableId)||item;
 }
+
 function agManualMesItems(mes=agendaMes){
   normalizeAgendaStore();
   agScheduleFirebaseCleanup();
@@ -4123,7 +4237,7 @@ window.render=function(m){
 
 <!-- BUILD_AGENDA_DEDUP_VISUAL_FIREBASE_2026_06_24_1605_END -->
 
-<!-- BUILD_PRESERVA_HISTORICO_PARCELADO_RECORRENTE_V2_2026_07_16_1918_END -->
+<!-- BUILD_FINANCEIRO_UNIFICADO_SYNC_SERIES_AGENDA_2026_09_01_1115_END -->
 
 </body>
 </html>
