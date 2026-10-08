@@ -6,9 +6,9 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_10_08_R4">
+<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_10_08_R6">
 <script>
-window.__BUILD_ID='FINANCEIRO_BURGER_2026_10_08_R4';
+window.__BUILD_ID='FINANCEIRO_BURGER_2026_10_08_R6';
 (function(){
   try{
     if('serviceWorker' in navigator){
@@ -1428,7 +1428,7 @@ let fbOk = false;
 let unsubListeners = [];
 
 // Blindagem pós-resgate: evita re-render pesado enquanto o usuário clica/digita.
-const APP_VERSION = 'FINANCEIRO_BURGER_2026_10_08_R4';
+const APP_VERSION = 'FINANCEIRO_BURGER_2026_10_08_R6';
 let renderTimer = null;
 let pendingRender = null;
 function modalAberto(){
@@ -1633,7 +1633,6 @@ async function lancCreate(d,type='unica',count=1){
   if(!Number.isFinite(d.valor)||d.valor<=0)throw new Error('Informe um valor positivo.');
   if(!finValidDate(d.data_competencia)||!finValidDate(d.data_vencimento))throw new Error('Informe competência e vencimento válidos.');
   if(!Number.isInteger(count)||count<1||count>60)throw new Error('A série deve ter entre 1 e 60 ocorrências.');
-  if(type!=='unica')d={...d,data_competencia:d.data_vencimento};
   d={...d,valor:lancRoundMoney(d.valor)};
   if(!Number.isSafeInteger(Math.round(d.valor*100))||d.valor<=0||(type==='parcelada'&&Math.round(d.valor*100)<count))throw new Error('Valor insuficiente ou fora do limite para distribuir as parcelas em centavos.');
   const key=lancBusinessKey(d,type,count),hash=await finHash(lancBusinessKey(d,type,1)),gid='v1_'+hash;
@@ -1872,7 +1871,8 @@ function lancSplitInstallments(total,count){
 function lancBuildSeries(d,type,count,gid){
   const n=Math.max(1,parseInt(count,10)||1);
   const baseDate=lancDateKey(d?.data_vencimento);
-  if(!baseDate) throw new Error('Informe a data de vencimento.');
+  const baseCompetence=lancDateKey(d?.data_competencia);
+  if(!finValidDate(baseDate)||!finValidDate(baseCompetence)) throw new Error('Informe competência e vencimento válidos.');
   const baseDesc=(d.descricao_base||d.descricao||d.categoria||'Lançamento').trim();
   const originalTotal=lancRoundMoney(d.valor);
   const values=type==='parcelada'
@@ -1888,13 +1888,14 @@ function lancBuildSeries(d,type,count,gid){
       data_efetivacao:i===0&&d.status==='Concluído'?(d.data_efetivacao||today()):null,
       id:`lanc_${gid}_${String(idx).padStart(3,'0')}`,
       valor:values[i],
-      data_competencia:data,
+      data_competencia:addMonths(baseCompetence,i),
       data_vencimento:data,
       creation_batch_id:gid,
       serie_tipo:type,
       serie_total:n,
       serie_indice:idx,
       serie_base_vencimento:baseDate,
+      serie_base_competencia:baseCompetence,
       descricao_base:baseDesc
     };
     if(type==='parcelada') return {
@@ -1930,7 +1931,8 @@ function lancManagedSeriesMeta(rows){
   const gid=lancSeriesId(seed);
   if(!gid || !['parcelada','recorrente'].includes(type) || total<2 || total>60) return null;
   const baseDate=lancDateKey(seed.serie_base_vencimento);
-  if(!finValidDate(baseDate)) return null;
+  const baseCompetence=lancDateKey(seed.serie_base_competencia||baseDate);
+  if(!finValidDate(baseDate)||!finValidDate(baseCompetence)) return null;
   const originalValue=type==='parcelada'
     ? lancRoundMoney(seed.serie_valor_total)
     : lancRoundMoney(seed.serie_valor_unitario||seed.valor);
@@ -1940,11 +1942,12 @@ function lancManagedSeriesMeta(rows){
   delete base.parcelamento_id; delete base.recorrencia_id; delete base.recorrente;
   delete base.creation_batch_id; delete base.serie_tipo; delete base.serie_total;
   delete base.serie_indice; delete base.serie_base_vencimento; delete base.serie_valor_total;
-  delete base.serie_valor_unitario;
+  delete base.serie_valor_unitario; delete base.serie_base_competencia;
+  delete base._series_edit_plan; delete base._series_history; delete base._series_index;
   base.status='Pendente';base.data_efetivacao=null;delete base._deleted;
   base.valor=originalValue;
   base.data_vencimento=baseDate;
-  base.data_competencia=baseDate;
+  base.data_competencia=baseCompetence;
   base.descricao=seed.descricao_base||seed.descricao||seed.categoria||'Lançamento';
   base.descricao_base=seed.descricao_base||base.descricao;
   return {gid,type,total,base};
@@ -1981,17 +1984,24 @@ function lancTs(r){
 // ══════════════════════════════════════════════
 // LANÇAMENTOS
 // ══════════════════════════════════════════════
+// Calendários independentes: operacional por vencimento; DRE por competência.
+function lancVencimentoMes(r){return finValidDate(r?.data_vencimento)?r.data_vencimento.slice(0,7):'sem-vencimento';}
+function lancMesesDisponiveis(){
+  const meses=[...new Set((store.lancamentos||[]).map(lancVencimentoMes))];
+  const atual=today().slice(0,7);if(!meses.includes(atual))meses.push(atual);
+  return meses.sort();
+}
 let sortKey='data_vencimento',sortDir='asc';
 let lancBusca='';
 let lancMesSel=today().slice(0,7);
 const LANC_MESES_EXT=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-const lancMesExt=m=>{if(!m)return 'Sem mês';const[y,mo]=m.split('-');return `${LANC_MESES_EXT[+mo-1]} de ${y}`;};
+const lancMesExt=m=>{if(m==='sem-vencimento')return 'Sem vencimento';if(!m)return 'Sem mês';const[y,mo]=m.split('-');return `${LANC_MESES_EXT[+mo-1]} de ${y}`;};
 
 
 window.setLancMes=m=>{lancMesSel=m||today().slice(0,7);CP=1;rLanc();};
 window.shiftLancMes=delta=>{
   const hoje=today().slice(0,7);
-  const meses=[...new Set((store.lancamentos||[]).map(r=>(r.data_competencia||'').slice(0,7)).filter(Boolean))].sort();
+  const meses=lancMesesDisponiveis();
   if(!meses.includes(hoje)) meses.push(hoje);
   meses.sort();
   if(!lancMesSel || !meses.includes(lancMesSel)) lancMesSel=meses.includes(hoje)?hoje:(meses[meses.length-1]||hoje);
@@ -2003,7 +2013,7 @@ window.shiftLancMes=delta=>{
 };
 window.clearLancFiltros=()=>{
   lancBusca='';
-  ['sw-l','fst','ftp','fmv','fcat','fsub','ffp'].forEach(id=>{const el=$(id);if(el)el.value='';});
+  ['sw-l','fst','ftp','fcat','fsub','ffp'].forEach(id=>{const el=$(id);if(el)el.value='';});
   rLanc(true);
 };
 
@@ -2012,31 +2022,28 @@ function rLanc(){
   const sw=swRaw.toLowerCase();
   const fS=($('fst')||{value:''}).value;
   const fT=($('ftp')||{value:''}).value;
-  const fMv=($('fmv')||{value:''}).value;
   const fC=($('fcat')||{value:''}).value;
   const fFP=($('ffp')||{value:''}).value;
   const fSub=($('fsub')||{value:''}).value;
   const hojeLanc=today();
   const mesAtualLanc=hojeLanc.slice(0,7);
-  const mesesDisp=[...new Set(store.lancamentos.map(r=>(r.data_competencia||'').slice(0,7)).filter(Boolean))].sort();
+  const mesesDisp=lancMesesDisponiveis();
   if(!mesesDisp.includes(mesAtualLanc)) mesesDisp.push(mesAtualLanc);
   mesesDisp.sort();
   if(!lancMesSel || !mesesDisp.includes(lancMesSel)) lancMesSel=mesesDisp.includes(mesAtualLanc)?mesAtualLanc:(mesesDisp[mesesDisp.length-1]||mesAtualLanc);
   const idxMes=Math.max(0,mesesDisp.indexOf(lancMesSel));
   const mesesFaixa=mesesDisp.slice(Math.max(0,idxMes-3), Math.min(mesesDisp.length, idxMes+4));
-  const filtroManual=!!(sw||fS||fT||fMv||fC||fSub||fFP);
+  const filtroManual=!!(sw||fS||fT||fC||fSub||fFP);
 
   const subs=[...new Set(store.lancamentos.filter(r=>!fC||r.categoria===fC).map(r=>r.subcategoria).filter(Boolean))].sort();
 
   let data=store.lancamentos.filter(r=>{
-    const comp=(r.data_competencia||'').slice(0,7);
-    if(comp!==lancMesSel) return false;
+    if(lancVencimentoMes(r)!==lancMesSel) return false;
     if(fS&&r.status!==fS)return false;
     if(fT&&r.rec_desp!==fT)return false;
     if(fC&&r.categoria!==fC)return false;
     if(fSub&&r.subcategoria!==fSub)return false;
     if(fFP&&r.forma_pagamento!==fFP)return false;
-    if(fMv&&(r.data_vencimento||'').slice(0,7)!==fMv)return false;
     if(sw){const s=`${r.descricao||''} ${r.categoria||''} ${r.subcategoria||''} ${r.forma_pagamento||''}`.toLowerCase();if(!s.includes(sw))return false;}
     return true;
   });
@@ -2056,7 +2063,7 @@ function rLanc(){
   const concluidos=data.filter(r=>r.status==='Concluído');
 
   const cats=[...new Set(store.lancamentos.map(r=>r.categoria).filter(Boolean))].sort();
-  const mesesV=[...new Set(store.lancamentos.map(r=>(r.data_vencimento||'').slice(0,7)).filter(Boolean))].sort().reverse();
+  const mesesV=mesesDisp.filter(m=>m!=='sem-vencimento');
   const fps=[...new Set(store.lancamentos.map(r=>r.forma_pagamento).filter(Boolean))].sort();
   const thC=(k,lbl)=>`<th class="${sortKey===k?'srt':''}" onclick="sortL('${k}')">${lbl}${sortKey===k?(sortDir==='asc'?' ↑':' ↓'):''}</th>`;
 
@@ -2094,7 +2101,7 @@ function rLanc(){
         <button class="lx-navbtn" onclick="shiftLancMes(-1)" ${idxMes<=0?'disabled':''}>‹</button>
         <div class="lx-titlewrap">
           <h2 class="lx-title">${lancMesExt(lancMesSel)}</h2>
-          <div class="lx-subtitle">Painel executivo de lançamentos · visão focada no mês selecionado</div>
+          <div class="lx-subtitle">Por vencimento</div>
         </div>
         <button class="lx-navbtn" onclick="shiftLancMes(1)" ${idxMes>=mesesDisp.length-1?'disabled':''}>›</button>
       </div>
@@ -2105,11 +2112,10 @@ function rLanc(){
         <select id="fcat" class="fc" onchange="rLanc()"><option value="">Categoria: Todas</option>${cats.map(c=>`<option value="${c}" ${fC===c?'selected':''}>${c}</option>`).join('')}</select>
         <select id="fsub" class="fc" onchange="rLanc()"><option value="">Subcategoria: Todas</option>${subs.map(s=>`<option value="${s}" ${fSub===s?'selected':''}>${s}</option>`).join('')}</select>
         <select id="ffp" class="fc" onchange="rLanc()"><option value="">Forma Pgto: Todas</option>${fps.map(x=>`<option value="${x}" ${fFP===x?'selected':''}>${x}</option>`).join('')}</select>
-        <select id="fmv" class="fc" onchange="rLanc()" title="Filtro por Vencimento"><option value="">Vencimento: Todos</option>${mesOptGroups(mesesV,fMv)}</select>
+        <select id="fmv" class="fc" onchange="setLancMes(this.value)" title="Mês de vencimento" aria-label="Mês de vencimento">${mesOptGroups(mesesV,lancMesSel)}${mesesDisp.includes('sem-vencimento')?`<option value="sem-vencimento" ${lancMesSel==='sem-vencimento'?'selected':''}>Sem vencimento</option>`:''}</select>
         <button class="btn bs" onclick="clearLancFiltros()">Limpar</button>
         <button class="btn bp" onclick="nL()">＋ Novo</button>
       </div>
-      <div class="lx-note">${filtroManual?'Filtros aplicados dentro do mês selecionado.':'Mostrando somente os lançamentos do mês selecionado. Use as setas ou os chips de mês para navegar.'}</div>
     </div>
     <div class="kpis">
       <div class="kpi" style="--kc:var(--acc)"><div class="kpi-l">Total do mês</div><div class="kpi-v">${fmt(tIn+tOut)}</div><div class="kpi-s">${data.length} registros em ${lancMesExt(lancMesSel)}</div></div>
@@ -2147,6 +2153,163 @@ window.setLancBusca=v=>{
 };
 window.sortL=(k)=>{if(sortKey===k){sortDir=sortDir==='asc'?'desc':'asc';}else{sortKey=k;sortDir='desc';}rLanc();};
 
+// Edição explícita de séries: calendário independente, plano para reposição e escrita atômica.
+let financeSeriesBaseline=null;
+const LANC_SERIES_FIELDS=['rec_desp','data_competencia','data_vencimento','valor','forma_pagamento','categoria_id','categoria','subcategoria_id','subcategoria','descricao','descricao_base','referencia'];
+function lancSeriesDeleted(r){return !!(r?._deleted||r?.deleted||r?.deleted_at);}
+function lancLinkedSeriesId(r){return r?.parcelamento_id||r?.recorrencia_id||'';}
+function lancCaptureSeries(id){
+  const anchor=finExpected('lancamentos',id),gid=lancLinkedSeriesId(anchor);
+  if(!gid)return null;
+  return {anchorId:id,gid,rows:(financeRaw.lancamentos||[]).filter(r=>lancLinkedSeriesId(r)===gid).map(r=>({...r}))};
+}
+function lancSeriesMonthOffset(date,base){
+  if(!finValidDate(date)||!finValidDate(base))return null;
+  return (+date.slice(0,4)- +base.slice(0,4))*12+(+date.slice(5,7)- +base.slice(5,7));
+}
+function lancSeriesOrder(r,rows){
+  const direct=Number(r.serie_indice||r._series_index||String(r.parcela_info||'').match(/^(\d+)\s*\//)?.[1]);
+  if(Number.isInteger(direct)&&direct>0)return direct;
+  const base=r.serie_base_vencimento||(rows||[]).map(x=>x.data_vencimento).filter(finValidDate).sort()[0];
+  const offset=lancSeriesMonthOffset(r.data_vencimento,base);
+  return offset!==null&&offset>=0?offset+1:null;
+}
+function lancSeriesPlan(rows){
+  const active=(rows||[]).filter(r=>!lancSeriesDeleted(r));
+  const plans=active.map(r=>r._series_edit_plan||null);
+  if(plans.some(p=>finVersion(p)!==finVersion(plans[0])))throw Error('A série mudou. Feche a edição e abra novamente para atualizar os meses.');
+  return plans[0]||null;
+}
+function lancApplySeriesPlan(rows,sourceRows){
+  const plan=lancSeriesPlan(sourceRows);
+  return (rows||[]).map(r=>{
+    if(!plan)return r;
+    const saved=plan.byId?.[r.id]||{};
+    const patch=Object.fromEntries(LANC_SERIES_FIELDS.filter(k=>Object.hasOwn(saved,k)).map(k=>[k,saved[k]]));
+    const next={...r,...patch,_series_edit_plan:plan,_series_index:r.serie_indice||r._series_index||null};
+    if(!finValidDate(next.data_competencia)||!finValidDate(next.data_vencimento)||!Number.isFinite(next.valor)||next.valor<=0)throw Error('Confira as datas e os valores da série antes de repor ocorrências.');
+    return next;
+  });
+}
+function lancSeriesMissingValue(rows,missing){
+  const meta=lancManagedSeriesMeta(rows);if(!meta)return 0;
+  return lancApplySeriesPlan(lancBuildSeries(meta.base,meta.type,meta.total,meta.gid),rows).filter(r=>missing.includes(r.serie_indice)).reduce((s,r)=>s+r.valor,0);
+}
+function lancSeriesBaseDescription(text,anchor){
+  const info=String(anchor.parcela_info||((anchor.serie_indice&&anchor.serie_total)?anchor.serie_indice+'/'+anchor.serie_total:'')).match(/^(\d+)\s*\/\s*(\d+)$/);
+  if(!info)return String(text||'').trim();
+  return String(text||'').trim().replace(new RegExp('\\s*(?:\\(\\s*'+info[1]+'\\s*/\\s*'+info[2]+'\\s*\\)|'+info[1]+'\\s*/\\s*'+info[2]+')\\s*$'),'').trim();
+}
+function lancSeriesDescription(base,r){
+  const info=r.parcela_info||((r.parcelamento_id&&r.serie_indice&&r.serie_total)?r.serie_indice+'/'+r.serie_total:'');
+  return info?`${base} (${info})`:base;
+}
+function lancSeriesEditModel(context,data,scope='all'){
+  if(!context||!['one','future','all'].includes(scope))throw Error('Selecione o alcance da alteração.');
+  const rows=context.rows,anchor=rows.find(r=>r.id===context.anchorId&&!lancSeriesDeleted(r));
+  if(!anchor)throw Error('Lançamento removido. Reabra a série.');
+  if(!data.categoria||!Number.isFinite(data.valor)||Math.round(data.valor*100)<1||!Number.isSafeInteger(Math.round(data.valor*100)))throw Error('Informe categoria e valor positivo.');
+  if(!finValidDate(data.data_competencia)||!finValidDate(data.data_vencimento))throw Error('Informe competência e vencimento válidos.');
+  if(!['Pendente','Concluído'].includes(data.status))throw Error('Selecione um status válido.');
+  const currentPlan=lancSeriesPlan(rows),meta=lancManagedSeriesMeta(rows);
+  const generated=meta?lancApplySeriesPlan(lancBuildSeries(meta.base,meta.type,meta.total,meta.gid),rows):[];
+  const all=new Map(generated.map(r=>[r.id,r]));rows.forEach(r=>all.set(r.id,r));
+  const index=lancSeriesOrder(anchor,rows);
+  const targets=[...all.values()].filter(r=>{
+    if(lancSeriesDeleted(r))return false;
+    if(scope==='one')return r.id===anchor.id;
+    if(scope==='all')return true;
+    const order=lancSeriesOrder(r,rows);
+    if(index===null||order===null)throw Error('Confira a ordem dos meses desta série ou escolha “Toda a série”.');
+    return order>=index;
+  });
+  const equal=(a,b)=>String(a??'').trim()===String(b??'').trim();
+  const changed=LANC_SERIES_FIELDS.filter(k=>k!=='descricao_base'&&k!=='descricao'&&Object.hasOwn(data,k)&&(k==='valor'?Math.round(data[k]*100)!==Math.round(anchor[k]*100):!equal(data[k],anchor[k])));
+  const baseDescription=lancSeriesBaseDescription(data.descricao,anchor);
+  const descriptionChanged=baseDescription!==lancSeriesBaseDescription(anchor.descricao,anchor);
+  const patches=new Map();
+  for(const r of targets){
+    const patch={};
+    for(const key of changed){
+      if(key==='data_competencia'||key==='data_vencimento'){
+        const offset=lancSeriesMonthOffset(r[key],anchor[key])??((index!==null&&lancSeriesOrder(r,rows)!==null)?lancSeriesOrder(r,rows)-index:null);
+        if(offset===null)throw Error('Confira as datas desta série antes de alterar todos os meses.');
+        patch[key]=addMonths(data[key],offset);
+        if(!finValidDate(patch[key]))throw Error('A alteração produz uma data inválida em outro mês. Confira as datas.');
+      }else patch[key]=key==='valor'?lancRoundMoney(data[key]):data[key];
+    }
+    if(descriptionChanged){patch.descricao_base=baseDescription;patch.descricao=lancSeriesDescription(baseDescription,r);}
+    if(r.id===anchor.id&&!equal(data.status,anchor.status)){
+      patch.status=data.status;
+      patch.data_efetivacao=data.status==='Concluído'?(anchor.data_efetivacao||today()):null;
+    }
+    for(const k of Object.keys(patch))if(equal(patch[k],r[k]))delete patch[k];
+    if(Object.keys(patch).length)patches.set(r.id,patch);
+  }
+  const byId={...(currentPlan?.byId||{})};
+  for(const [id,r] of all){
+    const next={...r,...(patches.get(id)||{})};
+    byId[id]=Object.fromEntries(LANC_SERIES_FIELDS.filter(k=>Object.hasOwn(next,k)).map(k=>[k,next[k]]));
+  }
+  const selected=targets.filter(r=>rows.some(x=>x.id===r.id));
+  const affected=selected.filter(r=>patches.has(r.id));
+  return {anchor,scope,rows,selected,affected,patches,byId,currentPlan,index,
+    before:selected.reduce((s,r)=>s+Math.round(r.valor*100),0)/100,
+    after:selected.reduce((s,r)=>s+Math.round((patches.get(r.id)?.valor??r.valor)*100),0)/100};
+}
+async function lancSaveSeriesEdit(context,data,scope='all'){
+  finAssertReady(['lancamentos']);
+  const model=lancSeriesEditModel(context,data,scope);
+  if(!model.patches.size)return {changed:0};
+  const active=context.rows.filter(r=>!lancSeriesDeleted(r));
+  if(context.rows.length>200)throw Error('Esta série excede o limite de edição conjunta. Nenhuma alteração foi gravada.');
+  const operation={id:lancMakeId('serie_edit'),at:new Date().toISOString(),scope,anchorId:context.anchorId};
+  const plan={version:1,revision:(model.currentPlan?.revision||0)+1,editId:operation.id,byId:model.byId};
+  const updates=active.map(r=>{
+    const delta=model.patches.get(r.id)||{};
+    const patch={...delta,_series_edit_plan:plan,_series_index:lancSeriesOrder(r,context.rows)};
+    if(Object.keys(delta).length){
+      const before=Object.fromEntries(Object.keys(delta).map(k=>[k,r[k]??null]));
+      patch._series_history=[...(r._series_history||[]),{...operation,before,after:delta}];
+    }
+    return {id:r.id,patch};
+  });
+  if(new TextEncoder().encode(JSON.stringify(updates)).length>8*1024*1024)throw Error('Esta alteração excede o tamanho permitido. Nenhuma alteração foi gravada.');
+  await finTransaction(async tx=>{
+    const refs=context.rows.map(r=>db.collection('lancamentos').doc(r.id));
+    const snaps=await Promise.all(refs.map(ref=>tx.get(ref)));
+    for(let i=0;i<snaps.length;i++)if(!snaps[i].exists||finVersion(snaps[i].data())!==finVersion(context.rows[i]))throw Error('Outro computador alterou esta série. Feche e reabra a edição para conferir os valores atuais.');
+    const actual=new Map(snaps.map((snap,i)=>[context.rows[i].id,snap]));
+    for(const change of updates){const snap=actual.get(change.id);tx.update(snap.ref,{...finClean(change.patch),_rev:(snap.data()._rev||0)+1,updated_at:firebase.firestore.FieldValue.serverTimestamp()});}
+  });
+  return {changed:model.affected.length};
+}
+function lancSeriesEditControls(r){
+  if(!r.id||!lancLinkedSeriesId(r))return '';
+  return `<div class="fgi full" style="padding:12px;border:1px solid var(--bd);border-radius:8px;background:var(--s2)">
+    <label class="fl" for="f-series-scope">Aplicar alteração</label>
+    <select id="f-series-scope" class="fv"><option value="all" selected>Toda a série</option><option value="future">Este e os próximos meses</option><option value="one">Somente este lançamento</option></select>
+    <div style="font-size:11px;color:var(--tx2);margin-top:8px">Valor por ${r.parcelamento_id?'parcela':'mês'}. Datas acompanham cada mês. Status vale apenas para este lançamento.</div>
+    <div id="series-edit-summary" style="font-size:12px;margin-top:10px" role="status"></div>
+    <details style="margin-top:8px"><summary style="cursor:pointer">Conferir alterações por mês</summary><div id="series-edit-preview" style="max-height:230px;overflow:auto;margin-top:8px"></div></details>
+  </div>`;
+}
+function lancUpdateSeriesPreview(){
+  const summary=$('series-edit-summary'),preview=$('series-edit-preview');if(!summary||!financeSeriesBaseline)return;
+  try{
+    const model=lancSeriesEditModel(financeSeriesBaseline,getLancD(),$('f-series-scope')?.value||'all');
+    summary.textContent=`${model.selected.length} lançamentos selecionados · ${model.affected.length} com alteração. Total: ${fmt(model.before)}${model.before!==model.after?' → '+fmt(model.after):''}`;
+    preview.innerHTML='<table style="width:100%;font-size:11px"><thead><tr><th>Vencimento</th><th>Competência</th><th>Valor</th></tr></thead><tbody>'+model.selected.map(r=>{
+      const d=model.patches.get(r.id)||{},value=(key,format)=>`${format(r[key])}${Object.hasOwn(d,key)?' → '+format(d[key]):''}`;
+      return `<tr><td>${agEsc(value('data_vencimento',fmtD))}</td><td>${agEsc(value('data_competencia',fmtD))}</td><td>${agEsc(value('valor',fmt))}</td></tr>`;
+    }).join('')+'</tbody></table>';
+  }catch(e){summary.textContent=e.message;if(preview)preview.innerHTML='';}
+}
+function lancBindSeriesEdit(){
+  if(!financeSeriesBaseline)return;
+  const body=$('mdbody');body.addEventListener('input',lancUpdateSeriesPreview);body.addEventListener('change',lancUpdateSeriesPreview);lancUpdateSeriesPreview();
+}
+
 // Form lançamento simplificado — selects usam IDs internos fixos
 function catOpts(sel=''){
   ccEnsureIds(); const gSel=ccGroupByAny(sel); const sid=gSel?.id||sel;
@@ -2158,19 +2321,8 @@ function subOpts(cat,sel=''){
 }
 window.updSub=()=>{const s=$('f-sub');if(s)s.innerHTML='<option value="">— Selecione —</option>'+subOpts($('f-cat').value);};
 window.syncLancDatesForRepeat=()=>{
-  const tp=$('f-rec')?$('f-rec').value:'unica';
-  const dc=$('f-dc'), dv=$('f-dv');
-  if(!dc||!dv) return;
-  const repeat=tp==='parcelada'||tp==='recorrente';
-  if(repeat){
-    if(!dv.value&&dc.value) dv.value=dc.value;
-    if(dv.value) dc.value=dv.value;
-    dc.disabled=true;
-    dc.title='No parcelado e no recorrente, a competência é igual ao vencimento.';
-  }else{
-    dc.disabled=false;
-    dc.title='';
-  }
+  const dc=$('f-dc');if(!dc)return;
+  dc.disabled=false;dc.title='';
 };
 window.toggleRecurr=()=>{
   const tp=$('f-rec').value;
@@ -2240,7 +2392,7 @@ function lancForm(r={}){
       <input id="f-dc" type="date" class="fv" value="${r.data_competencia||today()}" onchange="syncLancDatesForRepeat();previewDatas()"></div>
     <div class="fgi"><label class="fl">Data de Vencimento</label>
       <input id="f-dv" type="date" class="fv" value="${r.data_vencimento||''}" onchange="syncLancDatesForRepeat();previewDatas()"></div>
-    <div class="fgi"><label class="fl">Valor <span class="rq">*</span></label>
+    <div class="fgi"><label class="fl">${r.id&&lancLinkedSeriesId(r)?(r.parcelamento_id?'Valor da parcela':'Valor mensal'):'Valor'} <span class="rq">*</span></label>
       <input id="f-vl" type="number" step="0.01" min="0" class="fv" value="${r.valor||''}" placeholder="0,00" oninput="previewDatas()"></div>
     <div class="fgi"><label class="fl">Forma de Pagamento</label>
       <select id="f-fp" class="fv"><option value="">— Selecione —</option>${fpO}</select></div>
@@ -2251,7 +2403,7 @@ function lancForm(r={}){
     <div class="fgi full"><label class="fl">Descrição</label>
       <input id="f-ds" type="text" class="fv" value="${r.descricao||''}" placeholder="Descrição do lançamento"></div>
     <div class="fgi full"><label class="fl">Referência da despesa (opcional)</label><input id="f-ref" class="fv" value="${agEsc(r.referencia||'')}" placeholder="Ex.: número da nota, pedido ou contrato"><div style="font-size:10px;color:var(--tx3)">Diferencie despesas legítimas com os mesmos dados.</div></div>
-    ${r.id&&(r.parcelamento_id||r.recorrencia_id)?`<div class="fgi full"><div style="padding:10px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--s2);font-size:11px;color:var(--tx2)">🔒 Histórico preservado: esta edição não recalcula nem altera automaticamente competência, vencimento, parcelas ou meses da série.</div></div>`:''}
+    ${lancSeriesEditControls(r)}
     ${!r.id?`
     <input id="f-series-token" type="hidden" value="${lancMakeId('batch')}">
     <hr class="fsep">
@@ -2373,10 +2525,8 @@ function dreLancMatchesPlan(l,row){
 }
 
 function dreDateKey(r){
-  const d=(r&&(
-    r.data_competencia||r.competencia||r.data_vencimento||r.vencimento||r.data_pagamento||r.data||''
-  ))||'';
-  return String(d).slice(0,7);
+  const d=String(r?.data_competencia||r?.competencia||'');
+  return finValidDate(d)||/^\d{4}-(0[1-9]|1[0-2])$/.test(d)?d.slice(0,7):'';
 }
 function dreIsReceitaLanc(r){
   const rd=ccNorm(r?.rec_desp||r?.tipo||r?.natureza||'');
@@ -3088,8 +3238,8 @@ function fluxoItems(mes=fluxoMes){
   try{normalizeAgendaStore();}catch(_e){}
   // Fluxo diário: pagamentos vêm dos Lançamentos por vencimento.
   // Recebidos vêm somente da Agenda Financeira manual, para não misturar vendas brutas do fechamento mensal.
-  const lanc=(store.lancamentos||[]).filter(r=>r.rec_desp!=='Contas a receber'&&(r.data_vencimento||r.data_competencia||'').startsWith(mes)).map(r=>({
-    id:r.id,source:'lancamento',tipo:'pagar',data:r.data_vencimento||r.data_competencia,descricao:r.descricao||r.categoria||'Lançamento',valor:+r.valor||0,status:isDone(r)?'Baixado':'Aberto',categoria:r.categoria||'',subcategoria:r.subcategoria||'',origem:'Lançamentos'
+  const lanc=(store.lancamentos||[]).filter(r=>r.rec_desp!=='Contas a receber'&&agLancData(r).startsWith(mes)).map(r=>({
+    id:r.id,source:'lancamento',tipo:'pagar',data:agLancData(r),descricao:r.descricao||r.categoria||'Lançamento',valor:+r.valor||0,status:isDone(r)?'Baixado':'Aberto',categoria:r.categoria||'',subcategoria:r.subcategoria||'',origem:'Lançamentos'
   }));
   const man=bkCombinedReceipts(mes).map(r=>({
     id:r.id,source:r.source,tipo:'receber',data:r.data,descricao:agOrigem(r)||'Recebimento manual',valor:+r.valor||0,status:'Baixado',categoria:r.categoria||'',subcategoria:r.subcategoria||'',origem:'Agenda Financeira'
@@ -3192,7 +3342,6 @@ function auditoriaItens(){
     if(!finValidDate(r.data_competencia)||!finValidDate(r.data_vencimento))add('Alta','Data financeira inválida','A data impede classificar corretamente o caixa/competência. Corrija o registro.',r,value);
     if(isDone(r)&&!finValidDate(r.data_efetivacao))add('Média','Baixa sem efetivação','Status concluído sem data válida de pagamento/recebimento. Confira o comprovante.',r,value);
     if(!isDone(r)&&r.data_efetivacao)add('Alta','Status incompatível com pagamento','Existe efetivação, mas o status continua aberto. Confira antes de pagar novamente.',r,value);
-    if(r._integrity===1&&r.serie_tipo&&r.data_competencia!==r.data_vencimento)add('Média','Competência inconsistente na série','Nesta série nova, competência deve acompanhar o vencimento. O histórico não foi recalculado.',r,value);
     if(r.categoria&&r.subcategoria&&!auditoriaNoPlano(r,plano))add('Média','Fora do plano de contas','Revise a classificação para evitar distorção dos indicadores.',r,value);
     if(!r.categoria)add('Média','Despesa sem classificação','Há valor financeiro sem categoria; classifique para compor os indicadores.',r,value);
   }
@@ -3205,7 +3354,7 @@ function auditoriaItens(){
   for(const [gid,rows] of financeSeriesGroups()){
     if(rows.every(r=>r._deleted))continue;
     const {meta,missing,unknown}=financeSeriesMissing(rows),seed=rows.find(r=>!r._deleted);
-    if(missing.length)add('Alta',seed.parcelamento_id?'Parcelas ausentes':'Recorrências ausentes',`Faltam ocorrências ${missing.join(', ')}. ${meta?'A reposição exige revisão e mantém as ocorrências já gravadas.':'Histórico sem metadados suficientes para reposição segura; confira o contrato.'}`,seed,meta?(meta.type==='parcelada'?lancSplitInstallments(meta.base.valor,meta.total).filter((_,i)=>missing.includes(i+1)).reduce((a,b)=>a+b,0):meta.base.valor*missing.length):0,{gid,repairable:!!meta});
+    if(missing.length)add('Alta',seed.parcelamento_id?'Parcelas ausentes':'Recorrências ausentes',`Faltam ocorrências ${missing.join(', ')}. ${meta?'A reposição exige revisão e mantém as ocorrências já gravadas.':'Histórico sem metadados suficientes para reposição segura; confira o contrato.'}`,seed,meta?lancSeriesMissingValue(rows,missing):0,{gid,repairable:!!meta});
     if(unknown&&seed.recorrencia_id)add('Média','Série antiga sem prazo registrado','Não é possível comprovar o total de meses desta recorrência antiga. Confira o contrato; não foram inventadas ocorrências futuras.',seed,0);
   }
   const agendaGroups=new Map();
@@ -3259,10 +3408,10 @@ async function lancRepairManagedSeries(gid){
   if(!meta)throw new Error('Série sem metadados completos. Confira o contrato.');
   const anchor=rows.find(r=>!r._deleted);if(!anchor)throw new Error('Série excluída. Não há reposição autorizada.');
   const immutable=['serie_tipo','serie_total','serie_base_vencimento','serie_valor_total','serie_valor_unitario'];
-  if(rows.some(r=>immutable.some(k=>JSON.stringify(r[k]??null)!==JSON.stringify(rows[0][k]??null))))throw new Error('Metadados divergentes. Revise a série antes de repor.');
+  if(rows.some(r=>immutable.some(k=>JSON.stringify(r[k]??null)!==JSON.stringify(rows[0][k]??null))||(r.serie_base_competencia||r.serie_base_vencimento)!==(rows[0].serie_base_competencia||rows[0].serie_base_vencimento)))throw new Error('Metadados divergentes. Revise a série antes de repor.');
   const base={...meta.base,status:'Pendente',data_efetivacao:null};delete base._deleted;
   const missing=financeSeriesMissing(rows).missing;
-  const candidates=lancBuildSeries(base,meta.type,meta.total,gid).filter(r=>missing.includes(r.serie_indice));
+  const candidates=lancApplySeriesPlan(lancBuildSeries(base,meta.type,meta.total,gid),rows).filter(r=>missing.includes(r.serie_indice));
   if(!candidates.length)return [];
   await finTransaction(async tx=>{
     const seedRef=db.collection('lancamentos').doc(anchor.id),seed=await tx.get(seedRef);
@@ -3437,7 +3586,7 @@ const agAbertoLbl=t=>t==='pagar'?'A pagar':'Recebido';
 function agAddMes(m,delta){const d=new Date(m+'-01T12:00:00');d.setMonth(d.getMonth()+delta);return d.toISOString().slice(0,7);}
 function agMesExtenso(m){const d=new Date(m+'-01T12:00:00');const s=d.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});return s.charAt(0).toUpperCase()+s.slice(1);}
 function agEsc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function agLancData(r){return r.data_vencimento||r.data_competencia||r.data_efetivacao||'';}
+function agLancData(r){return finValidDate(r?.data_vencimento)?r.data_vencimento:'';}
 function agSort(a,b){return (a.data||'').localeCompare(b.data||'') || (a.tipo||'').localeCompare(b.tipo||'') || (a.descricao||'').localeCompare(b.descricao||'');}
 function agSum(arr,fn){return arr.filter(fn).reduce((s,x)=>s+(+x.valor||0),0);}
 
@@ -3720,8 +3869,8 @@ async function financeAction(fn,message){
   catch(e){console.error('[Financeiro:ação]',e);toast(e.message||'Não foi possível confirmar a operação.','er');return false;}
   finally{window.__financeActionBusy=false;buttons.forEach(b=>b.disabled=false);}
 }
-window.nL=()=>{financeBaseline=null;oM('Novo Lançamento',lancForm(),'<button class="btn bs" onclick="cM()">Cancelar</button><button class="btn bp" onclick="svL(null)">💾 Salvar</button>',true);};
-window.eL=id=>{const r=store.lancamentos.find(x=>x.id===id);if(!r)return;financeBaseline={...finExpected('lancamentos',id)};oM('Editar Lançamento',lancForm(r),`<button class="btn bs" onclick="cM()">Cancelar</button><button class="btn bp" onclick="svL('${id}')">💾 Atualizar</button>`,true);};
+window.nL=()=>{financeBaseline=null;financeSeriesBaseline=null;oM('Novo Lançamento',lancForm(),'<button class="btn bs" onclick="cM()">Cancelar</button><button class="btn bp" onclick="svL(null)">💾 Salvar</button>',true);};
+window.eL=id=>{const r=store.lancamentos.find(x=>x.id===id);if(!r)return;financeBaseline={...finExpected('lancamentos',id)};financeSeriesBaseline=lancCaptureSeries(id);oM('Editar Lançamento',lancForm(r),`<button class="btn bs" onclick="cM()">Cancelar</button><button class="btn bp" onclick="svL('${id}')">💾 Atualizar</button>`,true);lancBindSeriesEdit();};
 window.svL=async function(id){
   if(lancSaveInProgress)return;
   lancSetSaveBusy(true);
@@ -3733,7 +3882,8 @@ window.svL=async function(id){
       const base=financeBaseline?.id===id?financeBaseline:finExpected('lancamentos',id);
       if(!base)throw new Error('Registro indisponível. Reabra a tela.');
       d.data_efetivacao=d.status==='Concluído'?(base.data_efetivacao||today()):null;
-      await finUpdateMany([{col:'lancamentos',id,expected:base,patch:d}]);
+      if(financeSeriesBaseline&&lancLinkedSeriesId(base))await lancSaveSeriesEdit(financeSeriesBaseline,d,$('f-series-scope')?.value||'all');
+      else await finUpdateMany([{col:'lancamentos',id,expected:base,patch:d}]);
     }else{
       const count=rec==='parcelada'?Number($('f-np').value):rec==='recorrente'?Number($('f-nm').value):1;
       if(rec!=='unica'&&count<2)throw new Error('Informe ao menos duas ocorrências.');
@@ -4540,7 +4690,7 @@ window.bkOpenReceipts=function(){
 </script>
 
 <script type="application/json" id="financeiro-release">{
-  "build": "FINANCEIRO_BURGER_2026_10_08_R4",
+  "build": "FINANCEIRO_BURGER_2026_10_08_R6",
   "base": {
     "url": "https://github.com/marcelomreidogado-cmd/financeiro-burgerdorei/blob/main/index.html",
     "sha256": "1f18bc2c4c6b698f69e9760bf818072c015d27717e66dc6e1a15c89affbfde12"
@@ -4562,7 +4712,9 @@ window.bkOpenReceipts=function(){
     "Importações semanais acumulam novos movimentos por multiplicidade, validam sobreposição e preservam saldos; arquivos com mais de um mês são particionados.",
     "Recebimentos automáticos por dia/origem são salvos atomicamente junto do extrato e compartilhados por Agenda e Fluxo; manuais cobertos permanecem gravados, sem somar novamente.",
     "Investimento MP classificado como reserva/aplicação da empresa conforme confirmação do usuário.",
-    "R4: limpeza de avisos repetidos e explicações técnicas nas abas bancárias, Agenda e Fluxo. Valores, regras de cálculo, alertas acionáveis e gravação preservados; notas de metodologia disponíveis somente no diagnóstico interno."
+    "R4: limpeza de avisos repetidos e explicações técnicas nas abas bancárias, Agenda e Fluxo. Valores, regras de cálculo, alertas acionáveis e gravação preservados; notas de metodologia disponíveis somente no diagnóstico interno.",
+    "R5: Lançamentos, indicadores e navegação usam vencimento; DRE usa somente competência. Datas independentes também no cadastro/geração de novas séries, sem recalcular histórico. Datas ausentes não são substituídas por outro calendário; registros sem vencimento têm opção própria. Auditoria deixa de exigir datas iguais.",
+    "R6: edição conjunta de parcelas/recorrências com escopo toda a série, este e próximos, ou somente este; prévia por mês; datas independentes; status individual; histórico antes/depois; gravação atômica com proteção contra conflito e plano de reposição atualizado."
   ],
   "limites": [
     "Clientes precisam usar esta versão; abas antigas podem continuar gravando pelas rotinas antigas.",
@@ -4581,16 +4733,16 @@ window.bkOpenReceipts=function(){
     "https://firebase.google.com/docs/firestore/query-data/listen",
     "https://firebase.google.com/docs/firestore/manage-data/enable-offline"
   ],
-  "previousBuild": "FINANCEIRO_BURGER_2026_10_08_R3",
+  "previousBuild": "FINANCEIRO_BURGER_2026_10_08_R5",
   "bankAnalysis": {
-    "build": "FINANCEIRO_BURGER_2026_10_08_R4",
+    "build": "FINANCEIRO_BURGER_2026_10_08_R6",
     "dataStorage": "Firestore extratos_bancarios; cache local secundário; um documento por conta/mês, com movimentos e recebimentos diários",
     "writesToFirestore": "Somente importação autorizada de extratos e seus totais diários; sem alterar documentos de lançamentos ou manuais históricos",
     "sourcePrivacy": "HTML contém código, sem extratos ou consulta de lançamentos incorporados",
     "classification": "Cartões são despesas; investimento MP é reserva/aplicação da empresa; demais investimentos ficam a conferir",
     "methodology": [
       "Créditos e débitos medem movimentação de caixa, não faturamento ou lucro. Meses sem extrato são ausentes, nunca zero.",
-      "Lançamentos usa competência e registros ativos. Valores cadastrados não devem ser somados ao extrato e não equivalem a DRE conciliada.",
+      "A comparação contábil da aba bancária usa competência e registros ativos. Valores cadastrados não devem ser somados ao extrato e não equivalem a DRE conciliada.",
       "Conciliação sugere valor exato e data até 3 dias. Provável exige descrição compatível, efetivação e status concluído. Não confirma pagamentos nem altera registros.",
       "Atipicidade compara contraparte/natureza: pelo menos 8 pagamentos, acima de Q3 + 1,5 IQR e mínimo de R$ 1.000. Repetições podem ser legítimas.",
       "Repasses identificados por favorecido/CPF mascarado. Créditos dos sócios não são abatidos das retiradas.",
@@ -5611,10 +5763,8 @@ window.bkOpenReceipts=function(){
       "finishedAt": "2026-10-08T16:00:43.352Z"
     }
   },
-  "testes": {
+  "historico_testes_R4": {
     "build": "FINANCEIRO_BURGER_2026_10_08_R4",
-    "javascript_sha256": "ec718de10e192e2e59fdc232a271775098906a4d742e129d5925923749121e80",
-    "scope": "Limpeza de apresentação; bateria financeira anterior mantida como histórico R3, não reexecutada nesta alteração.",
     "interface": {
       "at": "2026-10-08T16:18:03.887257+00:00",
       "environment": "Prévia local isolada; navegação e inspeção visual no navegador integrado",
@@ -5634,6 +5784,294 @@ window.bkOpenReceipts=function(){
       "financialImportAndPersistenceLogic": "unchanged",
       "productionWrites": 0,
       "scope": "Verificação direcionada de apresentação. Sem reexecutar testes financeiros históricos."
+    }
+  },
+  "historico_testes_R5": {
+    "build": "FINANCEIRO_BURGER_2026_10_08_R5",
+    "dueDateRegression": {
+      "build": "FINANCEIRO_BURGER_2026_10_08_R5",
+      "at": "2026-10-08T21:09:45.368Z",
+      "environment": "Funções extraídas do HTML final em VM; escritas somente no emulador oficial local, projeto demo-burger-due-dates. Sem leitura ou escrita em dados de produção.",
+      "checks": [
+        {
+          "name": "Reprodução R4: BACON contabilizado indevidamente em outubro",
+          "status": "passed"
+        },
+        {
+          "name": "R5: outubro mostra os cinco vencimentos e total R$ 4.418,62",
+          "status": "passed"
+        },
+        {
+          "name": "R5: novembro mostra BACON, R$ 1.995,98, mantendo as duas datas",
+          "status": "passed"
+        },
+        {
+          "name": "Navegação avança por vencimentos mesmo sem competência no mês",
+          "status": "passed"
+        },
+        {
+          "name": "Seletor de mês usa a mesma data da navegação e não cruza filtros",
+          "status": "passed"
+        },
+        {
+          "name": "DRE mantém BACON em outubro, sem mover custo para novembro",
+          "status": "passed"
+        },
+        {
+          "name": "Competência não substitui vencimento ausente e registro continua acessível",
+          "status": "passed"
+        },
+        {
+          "name": "DRE não usa vencimento ou pagamento para suprir competência ausente",
+          "status": "passed"
+        },
+        {
+          "name": "Datas inválidas ficam sem vencimento e geram item de auditoria",
+          "status": "passed"
+        },
+        {
+          "name": "Agenda e Fluxo classificam BACON em novembro, independentemente da baixa",
+          "status": "passed"
+        },
+        {
+          "name": "Fim de ano: competência dezembro, vencimento janeiro",
+          "status": "passed"
+        },
+        {
+          "name": "Filtros por cartão/status/descrição e limpeza mantêm mês de vencimento",
+          "status": "passed"
+        },
+        {
+          "name": "Paginação: 205 vencimentos em novembro, nenhum somado em outubro",
+          "status": "passed"
+        },
+        {
+          "name": "parcelada: formulário conserva competência e vencimento independentes",
+          "status": "passed"
+        },
+        {
+          "name": "parcelada: geração avança cada calendário sem trocar datas",
+          "status": "passed"
+        },
+        {
+          "name": "recorrente: formulário conserva competência e vencimento independentes",
+          "status": "passed"
+        },
+        {
+          "name": "recorrente: geração avança cada calendário sem trocar datas",
+          "status": "passed"
+        },
+        {
+          "name": "Meses curtos e bissexto calculados independentemente a partir das datas-base",
+          "status": "passed"
+        },
+        {
+          "name": "Metadados de séries novas preservam competência base ao repor parcelas",
+          "status": "passed"
+        },
+        {
+          "name": "Série legada conserva a regra histórica gravada; nenhum recálculo automático",
+          "status": "passed"
+        },
+        {
+          "name": "Auditoria permite datas diferentes e preserva alerta de datas inválidas",
+          "status": "passed"
+        },
+        {
+          "name": "Vinte reaberturas/trocas de mês preservam valores e histórico",
+          "status": "passed"
+        },
+        {
+          "name": "Emulador: criação real de série salva ambas as datas sem sobrescrever competência",
+          "status": "passed"
+        },
+        {
+          "name": "Emulador: repetição da criação é rejeitada sem duplicar documentos",
+          "status": "passed"
+        },
+        {
+          "name": "Emulador: reposição de parcela faltante respeita competência original e baixa preservada",
+          "status": "passed"
+        },
+        {
+          "name": "Emulador: reparos sucessivos em série legada mantêm calendário histórico",
+          "status": "passed"
+        },
+        {
+          "name": "Emulador: quatro usuários criam mesma recorrência; somente uma série é aceita",
+          "status": "passed"
+        }
+      ],
+      "sourceJavascriptSha256": "2d4cb58ce2899f1e375ec856f959b423e7149740db3f1437f1e4da2db015388a",
+      "browserVerification": {
+        "environment": "Navegador integrado, prévia local com 6 registros de teste e emulador demo-burger-dates-ui; conexão de produção bloqueada",
+        "passed": [
+          "Outubro: 5 registros, R$ 4.418,62; BACON ausente",
+          "Seletor Novembro: BACON R$ 1.995,98 com competência 08/10 e vencimento 01/11",
+          "DRE: 6 registros em outubro e total do cenário R$ 6.414,60",
+          "Formulário parcelado e recorrente mantém competência editável em 08/10 e vencimento em 01/11",
+          "Refresh em outubro preserva as cinco despesas, sem BACON"
+        ]
+      }
+    }
+  },
+  "testes": {
+    "build": "FINANCEIRO_BURGER_2026_10_08_R6",
+    "javascript_sha256": "fc49bc4b92aa97c2b1f93a8e93ea6915c92100896d720be96a675e06d2a0a87c",
+    "scope": "Edição em série: alterações seletivas, calendários, histórico, pagamento individual, atomicidade, concorrência, reposição e interface; verificações anteriores mantidas como histórico.",
+    "seriesEdit": {
+      "build": "FINANCEIRO_BURGER_2026_10_08_R6",
+      "at": "2026-10-08T21:22:54.353Z",
+      "environment": "Código extraído do HTML final; emulador oficial local demo-burger-series-edit, sem dados de produção.",
+      "checks": [
+        {
+          "name": "Formulário oferece três escopos e seleciona Toda a série",
+          "status": "passed"
+        },
+        {
+          "name": "Toda a série altera o valor das seis parcelas",
+          "status": "passed"
+        },
+        {
+          "name": "Este e próximos preserva valores dos meses anteriores",
+          "status": "passed"
+        },
+        {
+          "name": "Somente este preserva demais ocorrências",
+          "status": "passed"
+        },
+        {
+          "name": "Renomear preserva a numeração de cada parcela",
+          "status": "passed"
+        },
+        {
+          "name": "Alterar categoria não uniformiza valores distintos ou datas",
+          "status": "passed"
+        },
+        {
+          "name": "Competência e vencimento propagam independentemente mês a mês",
+          "status": "passed"
+        },
+        {
+          "name": "Virada do ano e fim do mês não deslocam o calendário incorretamente",
+          "status": "passed"
+        },
+        {
+          "name": "Concluir a ocorrência aberta não baixa futuras nem reabre as pagas",
+          "status": "passed"
+        },
+        {
+          "name": "Excluídos, inclusive legados, não entram nos alvos",
+          "status": "passed"
+        },
+        {
+          "name": "Captura vincula somente a série correta, mesmo com nomes e valores iguais",
+          "status": "passed"
+        },
+        {
+          "name": "Recorrência legada sem índices preserva intervalos entre meses",
+          "status": "passed"
+        },
+        {
+          "name": "Parcelamento legado preserva índice próprio ao renomear",
+          "status": "passed"
+        },
+        {
+          "name": "Prévia não altera os documentos de origem",
+          "status": "passed"
+        },
+        {
+          "name": "Valores abaixo de um centavo e datas inválidas são rejeitados",
+          "status": "passed"
+        },
+        {
+          "name": "Reposição projetada inclui o novo valor também nas lacunas reais",
+          "status": "passed"
+        },
+        {
+          "name": "Salvar sem alterações não gera mudanças de valor ou histórico",
+          "status": "passed"
+        },
+        {
+          "name": "Emulador: alteração conjunta grava os seis meses e guarda valores anteriores",
+          "status": "passed"
+        },
+        {
+          "name": "Emulador: edição futura preserva valores anteriores e combina com plano existente",
+          "status": "passed"
+        },
+        {
+          "name": "Emulador: mudança de competência não altera vencimentos nem status",
+          "status": "passed"
+        },
+        {
+          "name": "Emulador: alteração de somente um mês é guardada sem uniformizar a série",
+          "status": "passed"
+        },
+        {
+          "name": "Emulador: reposição usa novo valor, descrição, calendário e preserva plano da série",
+          "status": "passed"
+        },
+        {
+          "name": "Emulador: edição após reposição mantém plano consistente em todos os meses",
+          "status": "passed"
+        },
+        {
+          "name": "Emulador: conflito em uma parcela aborta toda a alteração",
+          "status": "passed"
+        },
+        {
+          "name": "Emulador: quatro usuários editando simultaneamente aceitam somente uma alteração",
+          "status": "passed"
+        },
+        {
+          "name": "Emulador: exclusão concorrente impede gravação parcial e não ressuscita o mês",
+          "status": "passed"
+        },
+        {
+          "name": "Emulador: registro excluído continua intocado em nova edição da série",
+          "status": "passed"
+        },
+        {
+          "name": "Emulador: segunda tentativa com a mesma tela não repete histórico",
+          "status": "passed"
+        },
+        {
+          "name": "Emulador: status aplica-se somente à ocorrência aberta e preserva baixas anteriores",
+          "status": "passed"
+        },
+        {
+          "name": "Recorrência: nova descrição e valor mensal propagam sem criar parcelas",
+          "status": "passed"
+        },
+        {
+          "name": "Emulador: offline bloqueia edição e reconexão permite nova tentativa",
+          "status": "passed"
+        },
+        {
+          "name": "Emulador: série legada sem metadados mantém ordem após editar datas e próximos meses",
+          "status": "passed"
+        },
+        {
+          "name": "Emulador: edição das 60 ocorrências máximas cabe na gravação atômica",
+          "status": "passed"
+        },
+        {
+          "name": "Regressão: Lançamentos continua por vencimento, DRE por competência",
+          "status": "passed"
+        }
+      ],
+      "sourceJavascriptSha256": "fc49bc4b92aa97c2b1f93a8e93ea6915c92100896d720be96a675e06d2a0a87c",
+      "browserVerification": {
+        "environment": "Navegador integrado + emulador local demo-burger-series-ui; sem base de produção",
+        "passed": [
+          "Edição da parcela 2/6 abre Toda a série como padrão",
+          "Escopo próximos exibe 5 registros; toda série exibe 6",
+          "Prévia de valor R$ 100 → R$ 150 e total R$ 600 → R$ 900",
+          "Gravação pelo formulário confirma servidor e atualiza seis parcelas",
+          "Primeira e última parcelas mantêm numeração e datas após refresh"
+        ]
+      }
     }
   }
 }</script>
