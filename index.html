@@ -6,9 +6,9 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_10_14_R7">
+<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_10_20_R8">
 <script>
-window.__BUILD_ID='FINANCEIRO_BURGER_2026_10_14_R7';
+window.__BUILD_ID='FINANCEIRO_BURGER_2026_10_20_R8';
 (function(){
   try{
     if('serviceWorker' in navigator){
@@ -917,8 +917,8 @@ body,.app,.content,.btn,.fc,.fv,input,select,textarea,table{font-family:var(--fo
 #app{height:100dvh}
 #main,#content{min-height:0}
 #content.lanc-content{padding-bottom:max(32px,env(safe-area-inset-bottom));scroll-padding-bottom:32px}
-#content.lanc-content .lanc-scroll{max-height:60dvh;min-height:160px;overflow:auto;overscroll-behavior:auto;padding-bottom:4px}
-#content.lanc-content .pag{position:relative;padding-bottom:12px}
+#content.lanc-content .lanc-scroll{max-height:65dvh;min-height:240px;overflow:auto;overscroll-behavior:auto;padding-bottom:16px;scroll-padding-bottom:16px;scrollbar-gutter:stable}
+
 </style>
 <style id="burger-bank-styles">
 /* Scoped bank dashboard styles; existing Financeiro views retain their layout. */
@@ -1429,7 +1429,7 @@ let fbOk = false;
 let unsubListeners = [];
 
 // Blindagem pós-resgate: evita re-render pesado enquanto o usuário clica/digita.
-const APP_VERSION = 'FINANCEIRO_BURGER_2026_10_14_R7';
+const APP_VERSION = 'FINANCEIRO_BURGER_2026_10_20_R8';
 let renderTimer = null;
 let pendingRender = null;
 function modalAberto(){
@@ -2068,11 +2068,7 @@ function rLanc(){
   const fps=[...new Set(store.lancamentos.map(r=>r.forma_pagamento).filter(Boolean))].sort();
   const thC=(k,lbl)=>`<th class="${sortKey===k?'srt':''}" onclick="sortL('${k}')">${lbl}${sortKey===k?(sortDir==='asc'?' ↑':' ↓'):''}</th>`;
 
-  const limiteLinhas=100, paginas=Math.max(1,Math.ceil(data.length/limiteLinhas));
-  CP=Math.max(1,Math.min(CP,paginas));
-  const dadosVisiveis=data.slice((CP-1)*limiteLinhas,CP*limiteLinhas);
-
-  const rows=dadosVisiveis.map(r=>{
+  const rows=data.map(r=>{
     const isIn=r.rec_desp==='Contas a receber';
     const isParc=!!(r.parcela_info||r.parcelamento_id);
     const isRec=!!(r.recorrente||r.recorrencia_id);
@@ -2125,7 +2121,7 @@ function rLanc(){
       <div class="kpi" style="--kc:var(--er)"><div class="kpi-l">Saídas</div><div class="kpi-v">${fmt(tOut)}</div><div class="kpi-s">${data.filter(r=>r.rec_desp!=='Contas a receber').length} registros</div></div>
       <div class="kpi" style="--kc:${tIn-tOut>=0?'var(--ok)':'var(--er)'}"><div class="kpi-l">Resultado</div><div class="kpi-v" style="color:${tIn-tOut>=0?'var(--ok)':'var(--er)'}">${fmt(tIn-tOut)}</div><div class="kpi-s">${pendentes.length} pendentes · ${vencidos.length} vencidos (${fmt(vencidos.reduce((sum,r)=>sum+(+r.valor||0),0))})</div></div>
     </div>
-    <div class="tw lanc-scroll"><table class="tbl-lanc">
+    <div class="tw lanc-scroll" tabindex="0" role="region" aria-label="Lista contínua de lançamentos"><table class="tbl-lanc">
       <colgroup><col style="width:96px"><col style="width:96px"><col style="width:120px"><col style="width:160px"><col style="width:160px"><col><col style="width:190px"><col style="width:126px"><col style="width:238px"><col style="width:118px"></colgroup>
       <thead><tr>
         ${thC('data_competencia','Competência')}
@@ -2140,13 +2136,12 @@ function rLanc(){
       </tr></thead>
       <tbody>${rows||`<tr><td colspan="10"><div class="es"><div class="em">📭</div><h3>Sem resultados</h3><p>Não há lançamentos para ${lancMesExt(lancMesSel)} com os filtros atuais.</p></div></td></tr>`}</tbody>
     </table></div>
-    <div style="font-size:11px;color:var(--tx3);margin-top:8px;text-align:right">${data.length>dadosVisiveis.length?`Página ${CP} de ${paginas} · ${data.length} registros`:`${data.length} registros em ${lancMesExt(lancMesSel)}`}</div>${mkPag(CP,paginas,'financeLancPage')}`;
+    <div style="font-size:11px;color:var(--tx3);margin-top:8px;text-align:right">${data.length} registros em ${lancMesExt(lancMesSel)}</div>`;
   if(arguments[0]===true){
     requestAnimationFrame(()=>{const el=$('sw-l');if(el){el.focus();const p=el.value.length;try{el.setSelectionRange(p,p);}catch(e){}}});
   }
 }
 
-window.financeLancPage=p=>{CP=p;rLanc();};
 window.setLancBusca=v=>{
   // Não re-renderiza a tela a cada letra: espera uma pequena pausa para não travar a digitação.
   lancBusca=v||'';
@@ -4719,10 +4714,10 @@ window.bkOpenReceipts=function(){
     const months=model.monthly.map(r=>r.month);if(state.from&&!months.includes(state.from))state.from='';if(state.to&&!months.includes(state.to))state.to='';
     const ms=model.monthly.filter(scope),rows=model.bank.filter(scope);
     const tabs=[['overview','Visão executiva'],['monthly','Despesa × Receita mensal'],['partners','Sócios'],['receipts','Recebimentos automáticos'],['reconcile','Conciliação'],['sources','Extratos e fontes']];
-    c.innerHTML=`<div class="bk-page"><header class="bk-header"><div><h1>Despesa × Receita</h1></div><div><input id="bk-files" type="file" accept=".pdf,application/pdf,.xlsx" multiple hidden><button class="bk-primary" data-bank-import ${state.busy||state.pending.length?'disabled':''}>${state.busy?'Conferindo arquivos…':'Importar extratos PDF'}</button></div></header>
+    c.innerHTML=`<div class="bk-page"><header class="bk-header"><div><h1>Despesa × Receita</h1></div><div><input id="bk-files" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.pdf,application/pdf" multiple hidden><button class="bk-primary" data-bank-import ${state.busy||state.pending.length?'disabled':''}>${state.busy?'Conferindo arquivos…':'Importar Excel ou PDF'}</button></div></header>
     ${state.review.length?`<section class="bk-panel"><h2>Conferir importação</h2>${table(['Arquivo / período','Conta','Entradas','Saídas','Saldo final'],state.review.map(s=>cells([s.name+' · '+month(s.month),s.account?s.account.holder+' · '+s.account.branch+' / '+s.account.number:'Conta do extrato XLSX',money(sum(s.rows,r=>Math.max(0,r.cents))),money(sum(s.rows,r=>Math.max(0,-r.cents))),money(s.closing)])))}<p>Confira se os arquivos são da conta do Burger.</p><button class="bk-primary" data-bank-confirm ${state.busy?'disabled':''}>Confirmar e salvar</button> <button data-bank-cancel ${state.busy?'disabled':''}>Cancelar</button></section>`:''}
     ${state.message?`<p class="bk-notice" role="status">${E(state.message)}</p>`:''}${state.pending.length?`<p class="bk-notice">${state.pending.length} arquivos aguardam gravação. <button data-bank-retry ${state.busy?'disabled':''}>Tentar gravar</button> <button data-bank-discard ${state.busy?'disabled':''}>Descartar importação pendente</button></p>`:''}${!state.cloudConfirmed?'<p class="bk-notice">Atualização pendente. Confira sua conexão.</p>':''}
-    ${!state.statements.length?`<section class="bk-panel bk-empty"><h2>Importe os extratos mensais</h2><p>Selecione o PDF do extrato emitido pelo Sicoob. Arquivos XLSX também são aceitos.</p></section>`:`<nav class="bk-tabs" aria-label="Análise bancária">${tabs.map(([id,label])=>`<button data-bank-tab="${id}" aria-current="${id===state.tab?'page':'false'}">${label}</button>`).join('')}</nav>
+    ${!state.statements.length?`<section class="bk-panel bk-empty"><h2>Importe os extratos mensais</h2><p>Selecione os extratos do Sicoob em Excel (.xlsx) ou PDF.</p></section>`:`<nav class="bk-tabs" aria-label="Análise bancária">${tabs.map(([id,label])=>`<button data-bank-tab="${id}" aria-current="${id===state.tab?'page':'false'}">${label}</button>`).join('')}</nav>
     <div class="bk-controls bk-period"><label>De <select data-bank-filter="from"><option value="">Primeiro mês</option>${months.map(m=>`<option value="${m}" ${state.from===m?'selected':''}>${E(month(m))}</option>`).join('')}</select></label><label>Até <select data-bank-filter="to"><option value="">Último mês</option>${months.map(m=>`<option value="${m}" ${state.to===m?'selected':''}>${E(month(m))}</option>`).join('')}</select></label><button data-bank-reset>Limpar filtros</button><span>${rows.length.toLocaleString('pt-BR')} movimentos · ${ms.filter(m=>m.available).length} meses com extrato</span></div>
     ${financeSync.collections.lancamentos?.error||!navigator.onLine?'<p class="bk-notice">Sem conexão. Exibindo os últimos dados salvos.</p>':''}
     ${!rows.length&&ms.every(m=>!m.available)?'<section class="bk-panel"><h2>Sem extrato neste intervalo</h2><p>Selecione outro mês ou importe o arquivo ausente.</p></section>':state.tab==='overview'?overview(model,rows,ms):state.tab==='monthly'?monthly(model,ms):state.tab==='partners'?partners(model,rows,ms):state.tab==='receipts'?receiptView(model,ms):state.tab==='reconcile'?reconcile(model):sources(model,rows)}`}
@@ -4844,7 +4839,7 @@ window.bkOpenReceipts=function(){
 </script>
 
 <script type="application/json" id="financeiro-release">{
-  "build": "FINANCEIRO_BURGER_2026_10_14_R7",
+  "build": "FINANCEIRO_BURGER_2026_10_20_R8",
   "base": {
     "url": "https://github.com/marcelomreidogado-cmd/financeiro-burgerdorei/blob/main/index.html",
     "sha256": "1f18bc2c4c6b698f69e9760bf818072c015d27717e66dc6e1a15c89affbfde12"
@@ -4869,7 +4864,8 @@ window.bkOpenReceipts=function(){
     "R4: limpeza de avisos repetidos e explicações técnicas nas abas bancárias, Agenda e Fluxo. Valores, regras de cálculo, alertas acionáveis e gravação preservados; notas de metodologia disponíveis somente no diagnóstico interno.",
     "R5: Lançamentos, indicadores e navegação usam vencimento; DRE usa somente competência. Datas independentes também no cadastro/geração de novas séries, sem recalcular histórico. Datas ausentes não são substituídas por outro calendário; registros sem vencimento têm opção própria. Auditoria deixa de exigir datas iguais.",
     "R6: edição conjunta de parcelas/recorrências com escopo toda a série, este e próximos, ou somente este; prévia por mês; datas independentes; status individual; histórico antes/depois; gravação atômica com proteção contra conflito e plano de reposição atualizado.",
-    "R7: importação local de extratos PDF Sicoob com conferência de saldos, separação de lançamentos futuros, prévia antes de gravar e proteção contra sobreposição; fornecedor e nota fiscal nos lançamentos, busca, CSV e edição em série."
+    "R7: importação local de extratos PDF Sicoob com conferência de saldos, separação de lançamentos futuros, prévia antes de gravar e proteção contra sobreposição; fornecedor e nota fiscal nos lançamentos, busca, CSV e edição em série.",
+    "R8: botão Importar Excel ou PDF, com ambos os formatos disponíveis. Lançamentos exibe todos os registros filtrados do mês em lista contínua, sem paginação, com acesso por teclado e espaço abaixo da última linha."
   ],
   "limites": [
     "Clientes precisam usar esta versão; abas antigas podem continuar gravando pelas rotinas antigas.",
@@ -4888,7 +4884,7 @@ window.bkOpenReceipts=function(){
     "https://firebase.google.com/docs/firestore/query-data/listen",
     "https://firebase.google.com/docs/firestore/manage-data/enable-offline"
   ],
-  "previousBuild": "FINANCEIRO_BURGER_2026_10_08_R6",
+  "previousBuild": "FINANCEIRO_BURGER_2026_10_14_R7",
   "thirdParty": {
     "pdfjs": {
       "version": "6.4.299",
@@ -4898,7 +4894,7 @@ window.bkOpenReceipts=function(){
     }
   },
   "bankAnalysis": {
-    "build": "FINANCEIRO_BURGER_2026_10_14_R7",
+    "build": "FINANCEIRO_BURGER_2026_10_20_R8",
     "dataStorage": "Firestore extratos_bancarios; cache local secundário; um documento por conta/mês, com movimentos e recebimentos diários",
     "writesToFirestore": "Somente importação autorizada de extratos e seus totais diários; sem alterar documentos de lançamentos ou manuais históricos",
     "sourcePrivacy": "HTML contém código, sem extratos ou consulta de lançamentos incorporados",
@@ -6235,10 +6231,8 @@ window.bkOpenReceipts=function(){
       }
     }
   },
-  "testes": {
+  "historico_testes_R7": {
     "build": "FINANCEIRO_BURGER_2026_10_14_R7",
-    "javascript_sha256": "b4808fc8e692b012e1ae0310efff3a056dc70cd6a6e64901803033e4916bebb0",
-    "scope": "PDF Sicoob, validação bancária, sobreposição, fornecedor, edição em série, persistência e interface. Testes anteriores identificados como histórico.",
     "pdfSupplier": {
       "build": "FINANCEIRO_BURGER_2026_10_14_R7",
       "at": "2026-10-14T15:39:56.662Z",
@@ -6395,12 +6389,122 @@ window.bkOpenReceipts=function(){
       ]
     }
   },
+  "testes": {
+    "build": "FINANCEIRO_BURGER_2026_10_20_R8",
+    "javascript_sha256": "277e7f900e739a0531c8ca2b88f910d8b7de7c6cddbfbb74114eef06db63df4b",
+    "scope": "Lista contínua completa, filtros/ordenação, última linha acessível e importação de Excel/PDF. Demais testes mantidos como histórico.",
+    "continuousList": {
+      "build": "FINANCEIRO_BURGER_2026_10_20_R8",
+      "at": "2026-10-20T20:51:41.482Z",
+      "environment": "Renderização do HTML final com dados sintéticos; nenhuma alteração em produção.",
+      "checks": [
+        {
+          "name": "357 registros do mês renderizados, incluindo as antigas divisões 100/101 e 200/201",
+          "status": "passed"
+        },
+        {
+          "name": "Página antiga e retorno de outras abas não recortam a lista",
+          "status": "passed"
+        },
+        {
+          "name": "Busca por fornecedor mantém todas as correspondências acima de 100",
+          "status": "passed"
+        },
+        {
+          "name": "Ordenação alcança o último registro e preserva a quantidade",
+          "status": "passed"
+        },
+        {
+          "name": "Filtros de status e busca por nota funcionam sem paginação",
+          "status": "passed"
+        },
+        {
+          "name": "Competência não substitui vencimento e filtro vazio não inventa linhas",
+          "status": "passed"
+        },
+        {
+          "name": "Dados de entrada preservados após todos os filtros",
+          "status": "passed"
+        },
+        {
+          "name": "Excel e PDF expostos no mesmo seletor e ambos os importadores preservados",
+          "status": "passed"
+        },
+        {
+          "name": "Milhares de registros sintéticos ficam completos sem truncar",
+          "status": "passed"
+        }
+      ],
+      "sourceJavascriptSha256": "277e7f900e739a0531c8ca2b88f910d8b7de7c6cddbfbb74114eef06db63df4b",
+      "browserChecks": [
+        {
+          "name": "237 linhas presentes no navegador, sem paginação",
+          "status": "passed",
+          "rows": 237
+        },
+        {
+          "name": "Última linha integralmente visível e 8 linhas completas na região da tabela",
+          "status": "passed",
+          "viewport": {
+            "width": 1280,
+            "height": 720
+          },
+          "lastRow": {
+            "top": 595.71875,
+            "bottom": 646.21875
+          },
+          "scrollRegion": {
+            "top": 199.21875,
+            "bottom": 667.21875
+          }
+        },
+        {
+          "name": "Botão Importar Excel ou PDF permite selecionar ambos juntos",
+          "status": "passed",
+          "multiple": true
+        },
+        {
+          "name": "XLSX e PDF sintéticos lidos juntos com prévia correta e saldos conferidos",
+          "status": "passed",
+          "xlsx": {
+            "month": "2026-10",
+            "creditCents": 2000,
+            "closingCents": 12000
+          },
+          "pdf": {
+            "month": "2026-11",
+            "creditCents": 3000,
+            "closingCents": 15000
+          },
+          "saved": false
+        },
+        {
+          "name": "Pesquisar NF 237 encontra 1 lançamento; Limpar restaura os 237",
+          "status": "passed"
+        },
+        {
+          "name": "Retorno entre abas mantém a lista completa",
+          "status": "passed"
+        },
+        {
+          "name": "Nenhum erro no console do navegador durante a verificação",
+          "status": "passed"
+        }
+      ],
+      "limitations": [
+        "Verificação visual realizada no navegador integrado em 1280 × 720; outros navegadores e dispositivos não foram repetidos nesta revisão.",
+        "A leitura conjunta usou arquivos sintéticos Sicoob XLSX e PDF com texto. A prévia foi cancelada, sem gravação dos extratos.",
+        "Mudanças de R8 são de interface e renderização; testes anteriores de sincronização, séries e importação permanecem identificados como históricos.",
+        "Nenhuma gravação em dados reais do Firestore nesta revisão. Ambiente visual com conexão restrita ao emulador."
+      ]
+    }
+  },
   "pdfImport": {
     "engine": "PDF.js 6.4.299 incorporado no HTML",
     "supported": "Extrato Sicoob com texto selecionável; máximo 10 MB/200 páginas; lançamentos futuros excluídos",
     "confirmation": "Prévia de conta, período e totais antes de salvar. Uma conta vinculada por base.",
     "productionWritesThisRelease": false,
-    "testReport": "testes.pdfSupplier"
+    "testReport": "historico_testes_R7.pdfSupplier"
   }
 }</script>
 </body>
