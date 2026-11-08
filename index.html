@@ -6,9 +6,9 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1">
+<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2">
 <script>
-window.__BUILD_ID='FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1';
+window.__BUILD_ID='FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2';
 (function(){
   try{
     if('serviceWorker' in navigator){
@@ -1429,7 +1429,7 @@ let fbOk = false;
 let unsubListeners = [];
 
 // Blindagem pós-resgate: evita re-render pesado enquanto o usuário clica/digita.
-const APP_VERSION = 'FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1';
+const APP_VERSION = 'FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2';
 let renderTimer = null;
 let pendingRender = null;
 function modalAberto(){
@@ -1478,7 +1478,7 @@ function initFirebase(){
 // ── Fallback localStorage ──────────────────────────────
 const LS_KEY = 'bdr_data_v2_light';
 const LS_VER_KEY = 'bdr_build_version';
-try{ const previous=localStorage.getItem(LS_VER_KEY); if(previous!==APP_VERSION){ if(previous!=='FINANCEIRO_BURGER_2026_10_20_R8')localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
+try{ const previous=localStorage.getItem(LS_VER_KEY); if(previous!==APP_VERSION){ if(!['FINANCEIRO_BURGER_2026_10_20_R8','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1'].includes(previous))localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
 // Não limpa caches antigos a cada abertura; evita trabalho desnecessário no Chrome local.
 // try{ localStorage.removeItem('bdr_data_v1'); }catch(e){}
 // try{ localStorage.removeItem('bdr_data_v2'); }catch(e){}
@@ -3475,18 +3475,24 @@ window.exportarAuditoriaCSV=function(){
 };
 window.importarBackupJSON=function(){const inp=$('backup-file'); if(inp)inp.click();};
 window.receberBackupArquivo=async function(el){
-  const file=el.files&&el.files[0]; if(!file)return;
-  const txt=await file.text(); let data=null; try{data=JSON.parse(txt);}catch(e){toast('Arquivo inválido','er');return;}
-  if(!data.store||!data.store.lancamentos){toast('Backup não reconhecido','er');return;}
-  confirm_('Importar backup JSON','Isso vai substituir a base atual no Firebase pelas informações do backup selecionado. Gere outro backup antes de continuar.',async()=>{
-    const ok=prompt('Digite IMPORTAR para confirmar a substituição da base.'); if(ok!=='IMPORTAR'){toast('Importação cancelada','in');return;}
-    if(!financeSync.ready){toast('Reconecte antes de importar.','er');return;}
-    const cols=['lancamentos','centrocusto','patrimonio','agenda_financeira','clientes_mes'];
-    for(const col of cols){const snap=await db.collection(col).get(); for(let i=0;i<snap.docs.length;i+=450){const batch=db.batch();snap.docs.slice(i,i+450).forEach(d=>batch.delete(d.ref));await batch.commit();}}
-    await fbBatch('lancamentos',(data.store.lancamentos||[])); await fbBatch('centrocusto',(data.store.centrocusto||[])); await fbBatch('patrimonio',(data.store.patrimonio||[])); await fbBatch('agenda_financeira',(data.store.agenda||[]));
-    const batch=db.batch(); Object.entries(data.store.clientes_mes||{}).forEach(([k,v])=>batch.set(db.collection('clientes_mes').doc(k),{count:v})); await batch.commit();
-    await db.collection('config').doc('main').set(data.store.cfg||{}, {merge:true}); await loadAll(); render(CM); toast('Backup importado','ok');
-  });
+  const file=el?.files?.[0];if(!file)return;
+  try{
+    if(typeof file.size!=='number'||file.size>50*1024*1024)throw new Error('Arquivo inválido ou maior que 50 MB.');
+    let backup;try{backup=JSON.parse(await file.text());}catch(_e){throw new Error('Arquivo de backup inválido.');}
+    if(backup?.versao!=='financeiro_burger_backup_v1')throw new Error('Formato de backup não reconhecido.');
+    const cols=['lancamentos','centrocusto','patrimonio','agenda_financeira','clientes_mes','config'];
+    finAssertReady(cols);
+    const snaps=await Promise.all(cols.map(col=>db.collection(col).get({source:'server'})));
+    if(snaps.some(x=>x.metadata.fromCache||x.metadata.hasPendingWrites))throw new Error('Aguarde a sincronização dos dados.');
+    const all=Object.fromEntries(cols.map((col,i)=>[col,snaps[i].docs.map(d=>({...d.data(),id:d.id}))]));
+    const cfg=all.config.find(x=>x.id==='main')||{};const clean={...cfg};delete clean.id;
+    const current={versao:'financeiro_burger_backup_v1',store:{lancamentos:all.lancamentos,centrocusto:all.centrocusto,patrimonio:all.patrimonio,agenda:all.agenda_financeira,clientes_mes:Object.fromEntries(all.clientes_mes.map(r=>[r.id,r.count||0])),cfg:clean}};
+    const result=BurgerBackupCompare.compare(backup,JSON.parse(JSON.stringify(current)));
+    const labels={lancamentos:'Lançamentos',agenda_financeira:'Agenda',centrocusto:'Plano de contas',patrimonio:'Patrimônio',clientes_mes:'Clientes por mês',config:'Configurações'};
+    const rows=result.collections.map(x=>`<tr><td>${agEsc(labels[x.collection]||x.collection)}</td><td>${x.identical}</td><td>${x.different}</td><td>${x.missing}</td><td>${x.possibleDuplicates+x.unclassified}</td></tr>`).join('');
+    oM('Conferência do backup',`<p>Nenhum dado foi alterado. Registros diferentes e possíveis duplicidades precisam de conferência.</p><p>Este backup não inclui os extratos bancários nem os dados do Caixa. A recuperação preservando os registros atuais ainda está em preparação.</p><div class="tw"><table><thead><tr><th>Área</th><th>Iguais</th><th>Diferentes</th><th>Não encontrados</th><th>Para conferir</th></tr></thead><tbody>${rows}</tbody></table></div>`, '<button class="btn bs" onclick="cM()">Fechar</button>',true);
+  }catch(e){toast('Não foi possível conferir o backup: '+String(e.message||e),'er');}
+  finally{el.value='';}
 };
 
 // ══════════════════════════════════════════════
@@ -3501,11 +3507,11 @@ function rCfg(){
     </div>
     <div class="bi-card" style="margin-top:12px;border-color:rgba(34,197,94,.22)">
       <div class="sh" style="color:var(--ok)">🛡️ Backup e segurança</div>
-      <div style="font-size:12px;color:var(--tx2);line-height:1.45">Antes de alterar estrutura, restaurar dados ou importar planilhas, gere um backup. O JSON permite recuperar a base completa; o CSV ajuda na conferência externa.</div>
+      <div style="font-size:12px;color:var(--tx2);line-height:1.45">O JSON guarda lançamentos, Agenda, plano de contas, patrimônio, clientes e configurações. Extratos bancários e dados do Caixa não estão incluídos. Você pode conferir o arquivo sem alterar os registros atuais.</div>
       <div class="backup-actions">
-        <button class="btn bp" onclick="exportarBackupJSON()">⬇️ Backup completo JSON</button>
+        <button class="btn bp" onclick="exportarBackupJSON()">⬇️ Backup do Financeiro JSON</button>
         <button class="btn bs" onclick="exportarLancamentosCSV()">⬇️ Lançamentos CSV</button>
-        <button class="btn bs" onclick="importarBackupJSON()">📤 Importar backup JSON</button>
+        <button class="btn bs" onclick="importarBackupJSON()">📤 Conferir backup JSON</button>
         <input id="backup-file" type="file" accept="application/json,.json" style="display:none" onchange="receberBackupArquivo(this)">
       </div>
     </div>
@@ -4933,6 +4939,117 @@ window.bkOpenReceipts=function(){
   root.BurgerCashIntegration={state,start,render,preview};
 })(window);
 
+(function(root){
+  'use strict';
+  // Experimental decoder only. It never reads or writes Firestore.
+  function decode(value,format,timestamp,depth=0){
+    if(depth===0&&!['v1','v2'].includes(format))throw Error('Formato de backup inválido.');
+    if(depth>40)throw Error('Backup contém dados excessivamente profundos.');
+    if(value===null||typeof value==='string'||typeof value==='boolean')return value;
+    if(typeof value==='number'){if(!Number.isFinite(value))throw Error('Valor inválido no backup.');return value;}
+    if(Array.isArray(value))return value.map(v=>decode(v,format,timestamp,depth+1));
+    if(!value||typeof value!=='object')throw Error('Tipo inválido no backup.');
+    const proto=Object.getPrototypeOf(value);if(proto!==Object.prototype&&proto!==null)throw Error('Tipo inválido no backup.');
+    const keys=Object.keys(value).sort();
+    if(Object.hasOwn(value,'__finance_backup_type')){
+      if(format!=='v2'||value.__finance_backup_type!=='timestamp'||keys.join(',')!=='__finance_backup_type,nanoseconds,seconds'||!Number.isSafeInteger(value.seconds)||value.seconds< -62135596800||value.seconds>253402300799||!Number.isInteger(value.nanoseconds)||value.nanoseconds<0||value.nanoseconds>=1000000000||typeof timestamp!=='function')throw Error('Tipo ou data inválida no backup.');
+      return timestamp(value.seconds,value.nanoseconds);
+    }
+    // Older JSON did not identify Firestore timestamps, so this shape can be
+    // either a timestamp or an ordinary object. Do not guess before review.
+    if(format==='v1'&&keys.join(',')==='nanoseconds,seconds'&&Number.isInteger(value.seconds)&&Number.isInteger(value.nanoseconds)){const e=new Error('Backup antigo contém data de tipo ambíguo. É necessário conferir antes de recuperar.');e.code='backup-ambiguous-type';throw e;}
+    return Object.fromEntries(keys.map(k=>[k,decode(value[k],format,timestamp,depth+1)]));
+  }
+  root.BurgerBackupDecode={decode};
+})(typeof window==='undefined'?globalThis:window);
+
+(function(root){
+  'use strict';
+  // Read-only inventory. No record in this plan is authorization to restore.
+  const finNames=['lancamentos','agenda_financeira','centrocusto','patrimonio','clientes_mes','config','extratos_bancarios'];
+  const cashNames=['caixa','motoboys'];
+  const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/\s+/g,' ');
+  function stable(v,depth=0){
+    if(depth>40)throw Error('Backup contém dados excessivamente profundos.');
+    if(v===null||typeof v==='string'||typeof v==='boolean')return v;
+    if(typeof v==='number'&&Number.isFinite(v))return v;
+    if(Array.isArray(v))return v.map(x=>stable(x,depth+1));
+    if(v&&typeof v==='object')return Object.fromEntries(Object.keys(v).sort().map(k=>[k,stable(v[k],depth+1)]));
+    throw Error('Backup contém um valor inválido.');
+  }
+  function validateRows(rows,name){
+    if(!Array.isArray(rows))throw Error('Coleção ausente ou inválida: '+name);
+    if(rows.length>100000)throw Error('Quantidade de registros excedida: '+name);
+    const seen=new Set();return rows.map(r=>{
+      if(!r||typeof r!=='object'||Array.isArray(r)||typeof r.id!=='string'||!r.id||r.id==='.'||r.id==='..'||r.id.includes('/')||new TextEncoder().encode(r.id).length>1500||!r.data||typeof r.data!=='object'||Array.isArray(r.data))throw Error('Registro inválido em '+name+'.');
+      if(seen.has(r.id))throw Error('Identidade repetida em '+name+'.');seen.add(r.id);return {id:r.id,data:stable(r.data)};
+    });
+  }
+  function v1Rows(rows,name){if(!Array.isArray(rows))throw Error('Coleção ausente ou inválida: '+name);return validateRows(rows.map(r=>{if(!r||typeof r!=='object'||Array.isArray(r))throw Error('Registro inválido em '+name+'.');const {id,...data}=r;return {id,data};}),name);}
+  function unpack(backup){
+    if(!backup||typeof backup!=='object'||Array.isArray(backup))throw Error('Backup não reconhecido.');
+    if(backup.versao==='financeiro_burger_backup_v2_experimental'){
+      const f=backup.dados?.financeiro,c=backup.dados?.caixa,i=backup.dados?.integracao;
+      if(!f||!c||!i||backup.atomico!==false||!Object.hasOwn(i,'settings')||!Object.hasOwn(i,'guard'))throw Error('Backup incompleto.');
+      const locks=validateRows(c.caixa_integracao_locks,'caixa_integracao_locks');
+      if(locks.some(x=>typeof x.data.active!=='boolean'||x.data.active))throw Error('Backup com conferência do caixa em andamento.');
+      stable(i.settings);stable(i.guard);
+      return {financeiro:Object.fromEntries(finNames.map(n=>[n,validateRows(f[n],n)])),caixa:Object.fromEntries(cashNames.map(n=>[n,validateRows(c[n],n)])),omitted:[]};
+    }
+    if(backup.versao!=='financeiro_burger_backup_v1'||!backup.store||typeof backup.store!=='object')throw Error('Formato de backup não reconhecido.');
+    const s=backup.store;if(!s.clientes_mes||typeof s.clientes_mes!=='object'||Array.isArray(s.clientes_mes)||!s.cfg||typeof s.cfg!=='object'||Array.isArray(s.cfg))throw Error('Backup antigo incompleto.');
+    const clientes=Object.entries(s.clientes_mes).map(([id,count])=>({id,data:{count}}));
+    return {financeiro:{lancamentos:v1Rows(s.lancamentos,'lancamentos'),agenda_financeira:v1Rows(s.agenda,'agenda'),centrocusto:v1Rows(s.centrocusto,'centrocusto'),patrimonio:v1Rows(s.patrimonio,'patrimonio'),clientes_mes:validateRows(clientes,'clientes_mes'),config:validateRows([{id:'main',data:s.cfg}],'config')},caixa:{},omitted:['extratos_bancarios','caixa','motoboys','confirmações da integração']};
+  }
+  function signature(name,data){
+    if(name==='caixa')return /^\d{4}-\d{2}-\d{2}$/.test(data.data||'')?'day:'+data.data:null;
+    if(name!=='lancamentos')return null;
+    const description=norm(data.descricao_base||data.descricao),date=data.data_vencimento,amount=Number(data.valor),type=norm(data.rec_desp);
+    if(!description||!['contas a pagar','contas a receber'].includes(type)||!/^\d{4}-\d{2}-\d{2}$/.test(date||'')||!Number.isFinite(amount)||amount<=0||!Number.isSafeInteger(Math.round(amount*100)))return null;
+    const parsed=new Date(date+'T12:00:00Z');if(Number.isNaN(parsed.valueOf())||parsed.toISOString().slice(0,10)!==date)return null;
+    // Classificação, fornecedor e forma de pagamento podem ser corrigidos depois
+    // do backup. Divergências nesses campos não eliminam uma possível duplicata.
+    return JSON.stringify([type,date,Math.round(amount*100),description]);
+  }
+  // A changed description must not make a matching payment look safe to restore.
+  // Equal type/date/amount is only a reason for review, never proof of a duplicate.
+  function reviewSignature(name,data){
+    if(name!=='lancamentos')return null;
+    const date=data.data_vencimento,amount=Number(data.valor),type=norm(data.rec_desp);
+    if(!['contas a pagar','contas a receber'].includes(type)||!/^\d{4}-\d{2}-\d{2}$/.test(date||'')||!Number.isFinite(amount)||amount<=0||!Number.isSafeInteger(Math.round(amount*100)))return null;
+    const parsed=new Date(date+'T12:00:00Z');
+    if(Number.isNaN(parsed.valueOf())||parsed.toISOString().slice(0,10)!==date)return null;
+    return JSON.stringify([type,date,Math.round(amount*100)]);
+  }
+  function compare(backup,current){
+    const old=unpack(backup),now=unpack(current),summary=[],entries=[];
+    if(!root.BurgerBackupDecode?.decode)throw Error('Conferência de tipos indisponível.');
+    const format=backup.versao==='financeiro_burger_backup_v1'?'v1':'v2';
+    if(format==='v2')for(const scope of ['financeiro','caixa'])for(const rows of Object.values(old[scope]))for(const row of rows)root.BurgerBackupDecode.decode(row.data,'v2',(s,n)=>({seconds:s,nanoseconds:n}));
+    for(const scope of ['financeiro','caixa'])for(const [name,rows] of Object.entries(old[scope])){
+      const live=now[scope][name];if(!Array.isArray(live))throw Error('Base atual incompleta: '+name);
+      const byId=new Map(live.map(r=>[r.id,r])),byKey=new Map(),backupKeys=new Map(),liveReview=new Map(),backupReview=new Map();
+      for(const r of live){const k=signature(name,r.data);if(k){if(!byKey.has(k))byKey.set(k,[]);byKey.get(k).push(r.id);}}
+      for(const r of rows){const k=signature(name,r.data);if(k&&!byId.has(r.id))backupKeys.set(k,(backupKeys.get(k)||0)+1);}
+      for(const r of live){const k=reviewSignature(name,r.data);if(k){if(!liveReview.has(k))liveReview.set(k,[]);liveReview.get(k).push(r.id);}}
+      for(const r of rows){const k=reviewSignature(name,r.data);if(k&&!byId.has(r.id)){if(!backupReview.has(k))backupReview.set(k,[]);backupReview.get(k).push(r.id);}}
+      const result={scope,collection:name,backup:rows.length,identical:0,different:0,missing:0,possibleDuplicates:0,unclassified:0};
+      const record=(row,status,reason,related=[])=>entries.push({scope,collection:name,id:row.id,status,reason,related,description:String(row.data.descricao||row.data.nome||''),date:String(row.data.data_vencimento||row.data.data||''),amount:typeof row.data.valor==='number'&&Number.isFinite(row.data.valor)?row.data.valor:null});
+      for(const row of rows){const existing=byId.get(row.id);if(existing){if(JSON.stringify(existing.data)===JSON.stringify(row.data)){result.identical++;record(row,'identical','Registro já existe com os mesmos dados.');}else{result.different++;record(row,'different','Registro já existe com dados diferentes.');}continue;}
+        const key=signature(name,row.data),reviewKey=reviewSignature(name,row.data);let ambiguous=false;
+        if(format==='v1')try{root.BurgerBackupDecode.decode(row.data,'v1');}catch(e){if(e.code==='backup-ambiguous-type')ambiguous=true;else throw e;}
+        if(key&&(byKey.has(key)||backupKeys.get(key)>1)){result.possibleDuplicates++;record(row,'possibleDuplicate','Pode corresponder a outro registro.',byKey.get(key)||[]);}
+        else if(reviewKey&&(liveReview.has(reviewKey)||(backupReview.get(reviewKey)||[]).length>1)){result.possibleDuplicates++;record(row,'possibleDuplicate','Mesmo tipo, vencimento e valor; confira se corresponde a outra despesa ou receita.',[...new Set([...(liveReview.get(reviewKey)||[]),...(backupReview.get(reviewKey)||[]).filter(id=>id!==row.id)])]);}
+        else if(ambiguous||(['lancamentos','caixa'].includes(name)&&!key)){result.unclassified++;record(row,'review',ambiguous?'Tipo de data do backup antigo exige conferência.':'Dados insuficientes para identificar o registro.');}
+        else{result.missing++;record(row,'missing','Identidade não encontrada na leitura atual.');}
+      }
+      summary.push(result);
+    }
+    return {version:backup.versao,collections:summary,entries,omitted:old.omitted,readOnly:true};
+  }
+  root.BurgerBackupCompare={compare,unpack};
+})(typeof window==='undefined'?globalThis:window);
+
 // ── INIT ────────────────────────────────────────────────
 (async function(){
   // Limpa caches antigos pesados/corrompidos e evita renderizar milhares de lançamentos antes do Firebase responder.
@@ -4975,10 +5092,10 @@ window.bkOpenReceipts=function(){
 </script>
 
 <script type="application/json" id="financeiro-release">{
-  "build": "FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1",
+  "build": "FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2",
   "base": {
     "url": "https://github.com/marcelomreidogado-cmd/financeiro-burgerdorei/blob/main/index.html",
-    "sha256": "5d5bccb95c16b3872d4e63f3958386f5e9fcf96f6403411c92249c420da590b3"
+    "sha256": "f2ee9153f02bffe9cb01bd9396fa6e6fc4937e0e80c3992ed6c4a77d01dde8dc"
   },
   "changelog": [
     "Transações para criação, alteração, baixa e exclusão financeira; conflitos exigem revisão.",
@@ -5002,14 +5119,16 @@ window.bkOpenReceipts=function(){
     "R6: edição conjunta de parcelas/recorrências com escopo toda a série, este e próximos, ou somente este; prévia por mês; datas independentes; status individual; histórico antes/depois; gravação atômica com proteção contra conflito e plano de reposição atualizado.",
     "R7: importação local de extratos PDF Sicoob com conferência de saldos, separação de lançamentos futuros, prévia antes de gravar e proteção contra sobreposição; fornecedor e nota fiscal nos lançamentos, busca, CSV e edição em série.",
     "R8: botão Importar Excel ou PDF, com ambos os formatos disponíveis. Lançamentos exibe todos os registros filtrados do mês em lista contínua, sem paginação, com acesso por teclado e espaço abaixo da última linha.",
-    "Consulta somente leitura do Caixa: totais mensais e diários de vendas e motoboy e comparação de iFood/99Food com créditos identificados nos extratos."
+    "Consulta somente leitura do Caixa: totais mensais e diários de vendas e motoboy e comparação de iFood/99Food com créditos identificados nos extratos.",
+    "Conferência de backup somente de leitura; preserva a base atual e identifica divergências e possíveis duplicidades."
   ],
   "limites": [
     "Clientes precisam usar esta versão; abas antigas podem continuar gravando pelas rotinas antigas.",
     "Não é possível recuperar informações antigas nunca gravadas e sem metadados.",
     "Auditoria interna não executa com todos os navegadores fechados.",
     "Gravação autorizada dos extratos foi confirmada em produção; regras não foram alteradas. Os testes de falha, concorrência e reconexão usaram somente o emulador.",
-    "Esta etapa não cria lançamentos automáticos, não altera o DRE e não sincroniza dados de volta para o Caixa."
+    "Esta etapa não cria lançamentos automáticos, não altera o DRE e não sincroniza dados de volta para o Caixa.",
+    "Recuperação aditiva ainda não está disponível; o backup anterior não contém extratos bancários nem os dados do Caixa."
   ],
   "publicacao": [
     "Publicação do index.html pelo fluxo do repositório para o Firebase Hosting.",
@@ -6641,6 +6760,13 @@ window.bkOpenReceipts=function(){
         "Totais mensais e diários, mês parcial, dados inválidos e canais misturados.",
         "Atualização em tempo real, recarga e funcionamento sem extrato importado.",
         "Preservação dos lançamentos e extratos de teste e do cache local R8."
+      ]
+    },
+    "backupReview": {
+      "escopo": "Conferência somente de leitura em navegador e emulador com backup fictício.",
+      "cobertura": [
+        "Arquivo válido e inválido; divergências e possíveis duplicidades.",
+        "Lançamentos existentes preservados e cache das versões compatíveis mantido."
       ]
     }
   },
