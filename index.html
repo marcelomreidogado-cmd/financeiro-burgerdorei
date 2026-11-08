@@ -6,9 +6,9 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_10_20_R8">
+<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1">
 <script>
-window.__BUILD_ID='FINANCEIRO_BURGER_2026_10_20_R8';
+window.__BUILD_ID='FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1';
 (function(){
   try{
     if('serviceWorker' in navigator){
@@ -1429,7 +1429,7 @@ let fbOk = false;
 let unsubListeners = [];
 
 // Blindagem pós-resgate: evita re-render pesado enquanto o usuário clica/digita.
-const APP_VERSION = 'FINANCEIRO_BURGER_2026_10_20_R8';
+const APP_VERSION = 'FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1';
 let renderTimer = null;
 let pendingRender = null;
 function modalAberto(){
@@ -1478,7 +1478,7 @@ function initFirebase(){
 // ── Fallback localStorage ──────────────────────────────
 const LS_KEY = 'bdr_data_v2_light';
 const LS_VER_KEY = 'bdr_build_version';
-try{ if(localStorage.getItem(LS_VER_KEY)!==APP_VERSION){ localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
+try{ const previous=localStorage.getItem(LS_VER_KEY); if(previous!==APP_VERSION){ if(previous!=='FINANCEIRO_BURGER_2026_10_20_R8')localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
 // Não limpa caches antigos a cada abertura; evita trabalho desnecessário no Chrome local.
 // try{ localStorage.removeItem('bdr_data_v1'); }catch(e){}
 // try{ localStorage.removeItem('bdr_data_v2'); }catch(e){}
@@ -4711,16 +4711,16 @@ window.bkOpenReceipts=function(){
     const c=$('content');c.classList.add('bank-content');
     if(!state.ready){c.innerHTML='<div class="bk-page"><p>Carregando extratos…</p></div>';return;}
     const model=BurgerBankCore.analyze(state.statements,ledgerReady()?store.lancamentos:[]);state.model=model;
-    const months=model.monthly.map(r=>r.month);if(state.from&&!months.includes(state.from))state.from='';if(state.to&&!months.includes(state.to))state.to='';
+    const months=[...new Set([...model.monthly.map(r=>r.month),...(window.BurgerCashIntegration?.state.rows||[]).map(r=>String(r.data||'').slice(0,7)).filter(m=>/^\d{4}-(0[1-9]|1[0-2])$/.test(m))])].sort();if(state.from&&!months.includes(state.from))state.from='';if(state.to&&!months.includes(state.to))state.to='';
     const ms=model.monthly.filter(scope),rows=model.bank.filter(scope);
-    const tabs=[['overview','Visão executiva'],['monthly','Despesa × Receita mensal'],['partners','Sócios'],['receipts','Recebimentos automáticos'],['reconcile','Conciliação'],['sources','Extratos e fontes']];
+    const tabs=[['overview','Visão executiva'],['monthly','Despesa × Receita mensal'],['partners','Sócios'],['receipts','Recebimentos automáticos'],['channels','Vendas e repasses'],['cashPreview','Vendas e motoboy do caixa'],['reconcile','Conciliação'],['sources','Extratos e fontes']];
     c.innerHTML=`<div class="bk-page"><header class="bk-header"><div><h1>Despesa × Receita</h1></div><div><input id="bk-files" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.pdf,application/pdf" multiple hidden><button class="bk-primary" data-bank-import ${state.busy||state.pending.length?'disabled':''}>${state.busy?'Conferindo arquivos…':'Importar Excel ou PDF'}</button></div></header>
     ${state.review.length?`<section class="bk-panel"><h2>Conferir importação</h2>${table(['Arquivo / período','Conta','Entradas','Saídas','Saldo final'],state.review.map(s=>cells([s.name+' · '+month(s.month),s.account?s.account.holder+' · '+s.account.branch+' / '+s.account.number:'Conta do extrato XLSX',money(sum(s.rows,r=>Math.max(0,r.cents))),money(sum(s.rows,r=>Math.max(0,-r.cents))),money(s.closing)])))}<p>Confira se os arquivos são da conta do Burger.</p><button class="bk-primary" data-bank-confirm ${state.busy?'disabled':''}>Confirmar e salvar</button> <button data-bank-cancel ${state.busy?'disabled':''}>Cancelar</button></section>`:''}
     ${state.message?`<p class="bk-notice" role="status">${E(state.message)}</p>`:''}${state.pending.length?`<p class="bk-notice">${state.pending.length} arquivos aguardam gravação. <button data-bank-retry ${state.busy?'disabled':''}>Tentar gravar</button> <button data-bank-discard ${state.busy?'disabled':''}>Descartar importação pendente</button></p>`:''}${!state.cloudConfirmed?'<p class="bk-notice">Atualização pendente. Confira sua conexão.</p>':''}
-    ${!state.statements.length?`<section class="bk-panel bk-empty"><h2>Importe os extratos mensais</h2><p>Selecione os extratos do Sicoob em Excel (.xlsx) ou PDF.</p></section>`:`<nav class="bk-tabs" aria-label="Análise bancária">${tabs.map(([id,label])=>`<button data-bank-tab="${id}" aria-current="${id===state.tab?'page':'false'}">${label}</button>`).join('')}</nav>
+    <nav class="bk-tabs" aria-label="Análise bancária">${tabs.map(([id,label])=>`<button data-bank-tab="${id}" aria-current="${id===state.tab?'page':'false'}">${label}</button>`).join('')}</nav>
     <div class="bk-controls bk-period"><label>De <select data-bank-filter="from"><option value="">Primeiro mês</option>${months.map(m=>`<option value="${m}" ${state.from===m?'selected':''}>${E(month(m))}</option>`).join('')}</select></label><label>Até <select data-bank-filter="to"><option value="">Último mês</option>${months.map(m=>`<option value="${m}" ${state.to===m?'selected':''}>${E(month(m))}</option>`).join('')}</select></label><button data-bank-reset>Limpar filtros</button><span>${rows.length.toLocaleString('pt-BR')} movimentos · ${ms.filter(m=>m.available).length} meses com extrato</span></div>
     ${financeSync.collections.lancamentos?.error||!navigator.onLine?'<p class="bk-notice">Sem conexão. Exibindo os últimos dados salvos.</p>':''}
-    ${!rows.length&&ms.every(m=>!m.available)?'<section class="bk-panel"><h2>Sem extrato neste intervalo</h2><p>Selecione outro mês ou importe o arquivo ausente.</p></section>':state.tab==='overview'?overview(model,rows,ms):state.tab==='monthly'?monthly(model,ms):state.tab==='partners'?partners(model,rows,ms):state.tab==='receipts'?receiptView(model,ms):state.tab==='reconcile'?reconcile(model):sources(model,rows)}`}
+    ${state.tab==='channels'?BurgerCashIntegration.render(state.statements,state.from,state.to):state.tab==='cashPreview'?BurgerCashIntegration.preview(financeRaw.lancamentos,state.from,state.to,today().slice(0,7),!!financeSync.collections.lancamentos?.confirmed&&!financeSync.collections.lancamentos?.cached&&!financeSync.collections.lancamentos?.error):!state.statements.length?'<section class="bk-panel bk-empty"><h2>Importe os extratos mensais</h2><p>Selecione os extratos do Sicoob em Excel (.xlsx) ou PDF.</p></section>':!rows.length&&ms.every(m=>!m.available)?'<section class="bk-panel"><h2>Sem extrato neste intervalo</h2><p>Selecione outro mês ou importe o arquivo ausente.</p></section>':state.tab==='overview'?overview(model,rows,ms):state.tab==='monthly'?monthly(model,ms):state.tab==='partners'?partners(model,rows,ms):state.tab==='receipts'?receiptView(model,ms):state.tab==='reconcile'?reconcile(model):sources(model,rows)}
     </div>`;
     bind(c);
   }
@@ -4798,6 +4798,141 @@ window.bkOpenReceipts=function(){
   storage('readonly',os=>os.get('statements')).then(saved=>{if(saved?.statements&&!state.cloudConfirmed){state.statements=saved.statements;state.ignored=saved.ignored||[];}if(saved?.pending?.length)state.pending=saved.pending;}).catch(e=>{state.message='Cache local indisponível: '+e.message;}).finally(()=>{state.ready=true;render();});
 })();
 
+(function(root){
+  'use strict';
+  const monthPattern=/^\d{4}-(0[1-9]|1[0-2])$/;
+  // Last date present in the historical cash snapshot when mixed-channel sales were confirmed.
+  const mixedHistoryThrough='2026-11-05';
+  function validDate(s){if(!/^\d{4}-\d{2}-\d{2}$/.test(s||''))return false;const d=new Date(s+'T12:00:00Z');return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===s;}
+  function addDays(iso,n){const d=new Date(iso+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);}
+  // Rules currently implemented in the cash system: Monday + 30 days or +9 days.
+  function dueDate(date,origin){if(!validDate(date)||!['iFood','99Food'].includes(origin))throw Error('Data ou origem inválida');const dow=new Date(date+'T12:00:00Z').getUTCDay();const monday=addDays(date,-((dow+6)%7));return addDays(monday,origin==='iFood'?30:9);}
+  function value(v){if(typeof v!=='number'||!Number.isFinite(v)||v<0||Math.abs(v*100-Math.round(v*100))>0.00001)return null;const n=Math.round(v*100);return Number.isSafeInteger(n)?n:null;}
+  function dailyCash(rows){
+    const counts=new Map();for(const r of rows)if(validDate(r.data))counts.set(r.data,(counts.get(r.data)||0)+1);
+    const required=['pix','dinheiro','credito','debito','ifood'],allowed=new Set([...required,'food99']);
+    const number=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0&&Number.isSafeInteger(Math.round(v*100));
+    const cents=v=>{const n=Math.round(Number(v.toLocaleString('en-US',{useGrouping:false,minimumFractionDigits:2,maximumFractionDigits:2}))*100);return Number.isSafeInteger(n)?n:null;};
+    return rows.filter(r=>validDate(r.data)).map(r=>{
+      const s=r.vendas,m=r.motoboys,saleOK=s&&typeof s==='object'&&!Array.isArray(s)&&required.every(k=>Object.hasOwn(s,k))&&Object.entries(s).every(([k,v])=>allowed.has(k)&&number(v));
+      const motoOK=m&&typeof m==='object'&&!Array.isArray(m)&&Object.values(m).every(number),unique=counts.get(r.data)===1;
+      const sales=unique&&saleOK?cents(Object.values(s).reduce((a,b)=>a+b,0)):null,motoboy=unique&&motoOK?cents(Object.values(m).reduce((a,b)=>a+b,0)):null;
+      return {date:r.data,sales,motoboy,valid:sales!==null&&motoboy!==null};
+    }).sort((a,b)=>b.date.localeCompare(a.date));
+  }
+  function analyze(cash,statements,core){
+    const daily=new Map(),months=new Map(),errors=[];
+    function mget(m){if(!months.has(m))months.set(m,{month:m,days:0,mixed:0,ifood:0,food99:0,mixedDays:0,ifoodDays:0,food99Days:0,reviewDays:0,receipts:{iFood:0,'99Food':0},bank:false});return months.get(m);}
+    function dget(d){if(!daily.has(d))daily.set(d,{date:d,expected:{iFood:0,'99Food':0},unknown:{iFood:false,'99Food':false},mixedExpected:0,received:{iFood:0,'99Food':0},bank:false});return daily.get(d);}
+    function uncertainForecast(dt){if(dt>mixedHistoryThrough){dget(dueDate(dt,'iFood')).unknown.iFood=true;dget(dueDate(dt,'99Food')).unknown['99Food']=true;}}
+    const seen=new Set();
+    for(const row of cash){const dt=row.data;if(!validDate(dt)){errors.push('Data inválida no caixa');continue;}if(seen.has(dt)){mget(dt.slice(0,7)).reviewDays++;uncertainForecast(dt);errors.push('Data repetida no caixa: '+dt);continue;}seen.add(dt);const m=mget(dt.slice(0,7)),v=row.vendas;m.days++;
+      if(!v||typeof v!=='object'||Array.isArray(v)){m.reviewDays++;uncertainForecast(dt);errors.push('Vendas ausentes em '+dt);continue;}
+      const ifood=value(v.ifood),has99=Object.prototype.hasOwnProperty.call(v,'food99'),food99=has99?value(v.food99):null;
+      if(ifood===null){m.reviewDays++;uncertainForecast(dt);errors.push('Valor iFood inválido em '+dt);continue;}
+      if(dt<=mixedHistoryThrough){
+        if(has99&&food99===null){m.reviewDays++;errors.push('Valor 99Food inválido em '+dt);}
+        else if(has99&&food99>0){m.reviewDays++;errors.push('Histórico misturado com valor de 99Food a conferir em '+dt);}
+        else{m.mixed+=ifood;m.mixedDays++;}
+      }
+      else if(!has99){m.mixed+=ifood;m.mixedDays++;uncertainForecast(dt);}
+      else if(food99===null){m.reviewDays++;uncertainForecast(dt);errors.push('Valor 99Food inválido em '+dt);}
+      else{m.ifood+=ifood;m.food99+=food99;m.ifoodDays++;m.food99Days++;dget(dueDate(dt,'iFood')).expected.iFood+=ifood;dget(dueDate(dt,'99Food')).expected['99Food']+=food99;}
+    }
+    for(const s of statements){if(!monthPattern.test(s.month||'')||!Array.isArray(s.rows))continue;const m=mget(s.month);m.bank=true;
+      for(const day of s.daily||[])if(validDate(day.date))dget(day.date).bank=true;
+      for(const r of core.receipts(s,'identified').rows){if(!Object.hasOwn(m.receipts,r.origin))continue;m.receipts[r.origin]+=r.cents;dget(r.date).received[r.origin]+=r.cents;}
+    }
+    return {months:[...months.values()].sort((a,b)=>a.month.localeCompare(b.month)),daily:[...daily.values()].sort((a,b)=>a.date.localeCompare(b.date)),errors};
+  }
+  root.BurgerCashModel={analyze,dailyCash,dueDate,validDate};
+})(typeof window==='undefined'?globalThis:window);
+
+(function(root){
+  'use strict';
+  const allowed=['pix','dinheiro','credito','debito','ifood','food99'];
+  const n=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+  const lastDay=m=>{if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(m))throw Error('Competência inválida');let [y,x]=m.split('-').map(Number);return new Date(Date.UTC(y,x,0)).getUTCDate();};
+  function validDate(x){const d=new Date((x||'')+'T12:00:00Z');return /^\d{4}-\d{2}-\d{2}$/.test(x||'')&&!Number.isNaN(d.valueOf())&&d.toISOString().slice(0,10)===x;}
+  function plan(month,records,ledger,{currentMonth,closedDays=[]}={}){
+    const end=lastDay(month),issues=[],rounding=[],seen=new Set();let salesRaw=0,motoRaw=0;
+    const inMonth=records.filter(r=>String(r.data||'').slice(0,7)===month).sort((a,b)=>String(a.data).localeCompare(String(b.data))||String(a.id).localeCompare(String(b.id)));
+    const value=(v,field)=>{if(typeof v!=='number'||!Number.isFinite(v)||v<0||!Number.isSafeInteger(Math.round(v*100))){issues.push('Valor inválido: '+field);return 0;}const c=Math.round(v*100);if(Math.abs(v*100-c)>0.00001)rounding.push({field,raw:v,cents:c});return v;};
+    if(!currentMonth||month>=currentMonth)issues.push('Competência ainda aberta');
+    for(const r of inMonth){if(!validDate(r.data)){issues.push('Data inválida no caixa');continue;}if(seen.has(r.data))issues.push('Data duplicada: '+r.data);seen.add(r.data);
+      if(!r.vendas||typeof r.vendas!=='object'||Array.isArray(r.vendas))issues.push('Vendas ausentes: '+r.data);
+      else{let day=0;for(const k of ['pix','dinheiro','credito','debito','ifood'])if(!Object.hasOwn(r.vendas,k))issues.push('Canal ausente: '+r.data+' '+k);for(const [k,v] of Object.entries(r.vendas)){if(!allowed.includes(k))issues.push('Canal desconhecido: '+k);else day+=value(v,r.data+' '+k);}salesRaw+=day;if(day===0&&!closedDays.includes(r.data))issues.push('Dia sem vendas a confirmar: '+r.data);}
+      if(!r.motoboys||typeof r.motoboys!=='object'||Array.isArray(r.motoboys))issues.push('Motoboys ausentes: '+r.data);
+      else{let day=0;for(const [k,v] of Object.entries(r.motoboys))day+=value(v,r.data+' motoboy '+k);motoRaw+=day;}
+    }
+    for(let i=1;i<=end;i++){const d=month+'-'+String(i).padStart(2,'0');if(!seen.has(d)&&!closedDays.includes(d))issues.push('Dia sem caixa: '+d);}
+    const existing={sales:[],motoboy:[]};
+    for(const r of ledger){const dates=[r.data_competencia,r.data_vencimento,r.data_efetivacao].filter(d=>validDate(d)&&d.startsWith(month));if(!dates.length)continue;
+      const cat=n(r.categoria),sub=n(r.subcategoria),desc=n(r.descricao),type=n(r.rec_desp);
+      if(type==='contas a receber'&&(cat==='vendas mes'||/vendas?\s+(?:mes|bruta|total)/.test(desc)))existing.sales.push(r.id);
+      if(type==='contas a pagar'&&(sub==='motoboy'||/motoboy|moto boy/.test(desc)))existing.motoboy.push(r.id);
+    }
+    const roundTotal=v=>Math.round(Number(v.toLocaleString('en-US',{useGrouping:false,minimumFractionDigits:2,maximumFractionDigits:2}))*100),sales=roundTotal(salesRaw),moto=roundTotal(motoRaw);
+    if(!Number.isSafeInteger(sales)||!Number.isSafeInteger(moto))issues.push('Soma fora do limite');
+    return {month,closed:!!currentMonth&&month<currentMonth,days:seen.size,issues,rounding,salesCents:sales,motoboyCents:moto,existing,proposals:issues.length?[]:[...(!existing.sales.length&&sales>0?[{type:'sales',id:'caixa_fechamento_'+month+'_sales',cents:sales}]:[]),...(!existing.motoboy.length&&moto>0?[{type:'motoboy',id:'caixa_fechamento_'+month+'_motoboy',cents:moto}]:[])]};
+  }
+  root.BurgerMonthlyPlan={plan};
+})(typeof window==='undefined'?globalThis:window);
+
+(function(root){
+  'use strict';
+  const config={"apiKey": "AIzaSyDBiB9I6V6zPrI6LtYiNfdl0zcOrkGKf3Q", "authDomain": "studio-1719325280-f2519.firebaseapp.com", "projectId": "studio-1719325280-f2519", "storageBucket": "studio-1719325280-f2519.firebasestorage.app", "messagingSenderId": "517593974513", "appId": "1:517593974513:web:b4cbf29dda6a560ea90b50"};
+  const state={status:'connecting',rows:[],error:''};
+  let sourceUnsubscribe=null,sourceEpoch=0;
+  const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const money=v=>(v/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+  const date=s=>s.split('-').reverse().join('/');
+  const month=s=>new Date(s+'-15T12:00:00Z').toLocaleDateString('pt-BR',{month:'short',year:'numeric',timeZone:'UTC'});
+  const cells=xs=>'<tr>'+xs.map(x=>'<td>'+esc(x)+'</td>').join('')+'</tr>';
+  const table=(heads,rows)=>'<div class="bk-table-wrap"><table class="bk-table"><thead><tr>'+heads.map(x=>'<th scope="col">'+esc(x)+'</th>').join('')+'</tr></thead><tbody>'+(rows.join('')||'<tr><td colspan="'+heads.length+'">Sem dados neste intervalo.</td></tr>')+'</tbody></table></div>';
+  function notify(){if(typeof CM!=='undefined'&&CM==='extratos'&&['channels','cashPreview'].includes(root.BurgerBankUI?.state.tab))root.BurgerBankUI.render();else if(typeof CM!=='undefined'&&CM==='auditoria'&&typeof safeRender==='function')safeRender(CM);}
+  function start(){
+    const epoch=++sourceEpoch;
+    if(sourceUnsubscribe){try{sourceUnsubscribe();}catch(e){}sourceUnsubscribe=null;}
+    state.status='connecting';state.error='';notify();
+    try{const app=firebase.apps.find(x=>x.name==='burger-caixa-readonly')||firebase.initializeApp(config,'burger-caixa-readonly');
+      const sourceDb=app.firestore();state.sourceDb=sourceDb;
+      sourceUnsubscribe=sourceDb.collection('caixa').onSnapshot({includeMetadataChanges:true},snap=>{
+        if(epoch!==sourceEpoch)return;
+        if(snap.metadata.fromCache||snap.metadata.hasPendingWrites){state.status='unconfirmed';notify();return;}
+        state.rows=snap.docs.map(d=>({...d.data(),id:d.id}));state.status='ready';state.error='';notify();
+      },err=>{if(epoch!==sourceEpoch)return;state.status='error';state.error=String(err.message||err);notify();});
+    }catch(e){if(epoch!==sourceEpoch)return;state.status='error';state.error=String(e.message||e);notify();}
+  }
+  function render(statements,from,to){
+    if(state.status!=='ready')return '<section class="bk-panel"><h2>Vendas e repasses de aplicativos</h2><p>'+esc(state.status==='error'?'Não foi possível consultar o caixa.':'Aguardando confirmação do caixa.')+'</p></section>';
+    const model=BurgerCashModel.analyze(state.rows,statements,BurgerBankCore),scope=m=>(!from||m>=from)&&(!to||m<=to);
+    const months=model.months.filter(x=>scope(x.month));
+    const rows=months.map(m=>cells([month(m.month),m.reviewDays?'A conferir':m.mixedDays?money(m.mixed)+' ('+m.mixedDays+' dias)':'—',m.reviewDays?'A conferir':m.ifoodDays?money(m.ifood):'—',m.reviewDays?'A conferir':m.food99Days?money(m.food99):'—',m.bank?money(m.receipts.iFood):'Sem extrato',m.bank?money(m.receipts['99Food']):'Sem extrato']));
+    const daily=model.daily.filter(d=>scope(d.date.slice(0,7))).map(d=>cells([date(d.date),d.unknown.iFood?'A conferir':d.expected.iFood?money(d.expected.iFood):'—',d.unknown['99Food']?'A conferir':d.expected['99Food']?money(d.expected['99Food']):'—',d.bank?money(d.received.iFood):'Sem extrato no dia',d.bank?money(d.received['99Food']):'Sem extrato no dia']));
+    return '<section class="bk-panel"><h2>Vendas e repasses de aplicativos</h2><p>Vendas pela data da venda; repasses pela data do crédito em conta. Períodos diferentes e taxas podem afetar a comparação. Repasses exibem apenas os movimentos dos extratos importados, que podem estar parciais.</p><p>Nos dias antigos sem 99Food separado, o valor de iFood inclui vendas de 99Food. Esses dias não têm previsão separada por aplicativo.</p>'+(model.errors.length?'<p>Há '+esc(model.errors.length)+' registro(s) do caixa a conferir.</p>':'')+table(['Mês','Vendas iFood + 99Food misturadas','Vendas iFood separadas','Vendas 99Food separadas','Repasses iFood','Repasses 99Food'],rows)+'</section><section class="bk-panel"><h2>Previsões e créditos por dia</h2><p>Previsões são valores brutos das vendas com canal identificado; não confirmam o valor ou a data efetiva do repasse.</p>'+table(['Data','Previsão iFood','Previsão 99Food','Recebido iFood','Recebido 99Food'],daily)+'</section>';
+  }
+  function preview(ledger,from,to,currentMonth,ledgerConfirmed){
+    if(state.status==='error')return '<section class="bk-panel"><p>Não foi possível consultar o caixa. Verifique a conexão e tente novamente.</p></section>';
+    if(state.status!=='ready'||!ledgerConfirmed)return '<section class="bk-panel"><p>Aguardando confirmação do caixa e dos lançamentos.</p></section>';
+    const months=[...new Set(state.rows.map(r=>(r.data||'').slice(0,7)).filter(m=>/^\d{4}-(0[1-9]|1[0-2])$/.test(m)))].sort();
+    const closedDays=['2026-05-14','2026-06-14'],pending=[];
+    const rows=months.filter(m=>(!from||m>=from)&&(!to||m<=to)).map(m=>{
+      const p=BurgerMonthlyPlan.plan(m,state.rows,ledger,{currentMonth,closedDays});
+      if(p.closed)for(const issue of p.issues){const found=issue.match(/^Dia sem (?:caixa|vendas a confirmar): (\d{4}-\d{2}-\d{2})$/);if(found)pending.push(found[1]);}
+      const serious=p.issues.filter(x=>x!=='Competência ainda aberta'&&!/^Dia sem (?:caixa|vendas a confirmar):/.test(x));
+      const canDisplay=!serious.length;
+      const status=!p.closed?(m>currentMonth?'Mês futuro · ':'Em andamento · ')+p.days+(p.days===1?' dia registrado':' dias registrados'):p.issues.length&&!serious.length?'Parcial · dias a conferir':p.issues.length?'Conferir dados do caixa':p.existing.sales.length&&p.existing.motoboy.length?'Registros encontrados; confira':p.rounding.length?'Total arredondado a centavos':'Sem fechamento completo';
+      return cells([month(m),canDisplay?money(p.salesCents):'A conferir',canDisplay?money(p.motoboyCents):'A conferir',p.existing.sales.length?'Conferir registro':p.closed?'Não identificado':'Em andamento',p.existing.motoboy.length?'Conferir registro':p.closed?'Não identificado':'Em andamento',status]);
+    });
+    const dates=[...new Set(pending)].sort();
+    const actions=dates.length?'<p>Dias sem movimento confirmado: '+dates.map(d=>esc(date(d))).join(', ')+'.</p>':'';
+    const daily=BurgerCashModel.dailyCash(state.rows).filter(r=>(!from||r.date.slice(0,7)>=from)&&(!to||r.date.slice(0,7)<=to)).map(r=>cells([date(r.date),r.sales===null?'A conferir':money(r.sales),r.motoboy===null?'A conferir':money(r.motoboy),r.valid?'Registrado':'Verificar dados']));
+    return '<section class="bk-panel"><h2>Prévia de fechamento do caixa</h2><p>Os valores são somados a partir dos dias registrados no Caixa. Meses incompletos aparecem como parciais. Esta consulta não cria lançamentos nem altera o DRE.</p>'+table(['Mês','Vendas no caixa','Motoboy no caixa','Vendas no Financeiro','Motoboy no Financeiro','Situação'],rows)+actions+'</section><section class="bk-panel"><details><summary>Ver vendas e motoboy por dia</summary>'+table(['Dia','Vendas registradas','Motoboy registrado','Situação'],daily)+'</details></section>';
+  }
+  root.BurgerCashIntegration={state,start,render,preview};
+})(window);
+
 // ── INIT ────────────────────────────────────────────────
 (async function(){
   // Limpa caches antigos pesados/corrompidos e evita renderizar milhares de lançamentos antes do Firebase responder.
@@ -4810,6 +4945,7 @@ window.bkOpenReceipts=function(){
     setStatus('● Firebase SDK indisponível','var(--wa)');
   } else {
     initFirebase();
+    if(fbOk)BurgerCashIntegration.start();
   }
   if(fbOk){
     try{
@@ -4839,10 +4975,10 @@ window.bkOpenReceipts=function(){
 </script>
 
 <script type="application/json" id="financeiro-release">{
-  "build": "FINANCEIRO_BURGER_2026_10_20_R8",
+  "build": "FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1",
   "base": {
     "url": "https://github.com/marcelomreidogado-cmd/financeiro-burgerdorei/blob/main/index.html",
-    "sha256": "1f18bc2c4c6b698f69e9760bf818072c015d27717e66dc6e1a15c89affbfde12"
+    "sha256": "5d5bccb95c16b3872d4e63f3958386f5e9fcf96f6403411c92249c420da590b3"
   },
   "changelog": [
     "Transações para criação, alteração, baixa e exclusão financeira; conflitos exigem revisão.",
@@ -4865,19 +5001,20 @@ window.bkOpenReceipts=function(){
     "R5: Lançamentos, indicadores e navegação usam vencimento; DRE usa somente competência. Datas independentes também no cadastro/geração de novas séries, sem recalcular histórico. Datas ausentes não são substituídas por outro calendário; registros sem vencimento têm opção própria. Auditoria deixa de exigir datas iguais.",
     "R6: edição conjunta de parcelas/recorrências com escopo toda a série, este e próximos, ou somente este; prévia por mês; datas independentes; status individual; histórico antes/depois; gravação atômica com proteção contra conflito e plano de reposição atualizado.",
     "R7: importação local de extratos PDF Sicoob com conferência de saldos, separação de lançamentos futuros, prévia antes de gravar e proteção contra sobreposição; fornecedor e nota fiscal nos lançamentos, busca, CSV e edição em série.",
-    "R8: botão Importar Excel ou PDF, com ambos os formatos disponíveis. Lançamentos exibe todos os registros filtrados do mês em lista contínua, sem paginação, com acesso por teclado e espaço abaixo da última linha."
+    "R8: botão Importar Excel ou PDF, com ambos os formatos disponíveis. Lançamentos exibe todos os registros filtrados do mês em lista contínua, sem paginação, com acesso por teclado e espaço abaixo da última linha.",
+    "Consulta somente leitura do Caixa: totais mensais e diários de vendas e motoboy e comparação de iFood/99Food com créditos identificados nos extratos."
   ],
   "limites": [
     "Clientes precisam usar esta versão; abas antigas podem continuar gravando pelas rotinas antigas.",
     "Não é possível recuperar informações antigas nunca gravadas e sem metadados.",
     "Auditoria interna não executa com todos os navegadores fechados.",
-    "Gravação autorizada dos extratos foi confirmada em produção; regras não foram alteradas. Os testes de falha, concorrência e reconexão usaram somente o emulador."
+    "Gravação autorizada dos extratos foi confirmada em produção; regras não foram alteradas. Os testes de falha, concorrência e reconexão usaram somente o emulador.",
+    "Esta etapa não cria lançamentos automáticos, não altera o DRE e não sincroniza dados de volta para o Caixa."
   ],
   "publicacao": [
-    "Arquivo preparado, sem publicação automática. Substituir somente index.html no repositório financeiro-burgerdorei.",
-    "Após publicar, fechar/recarregar todas as abas em todos os computadores e conferir este marcador na Auditoria.",
-    "Revisar duplicidades históricas na Auditoria; registros semelhantes não são apagados automaticamente.",
-    "A autoauditoria semanal é local, somente de leitura e depende de acesso ao sistema; o diagnóstico pode ser exportado pelo botão Diagnóstico e versão."
+    "Publicação do index.html pelo fluxo do repositório para o Firebase Hosting.",
+    "Recarregar as abas abertas para visualizar a versão atual.",
+    "Lançamentos e histórico existentes não são modificados pela nova consulta."
   ],
   "documentacao_tecnica": [
     "https://firebase.google.com/docs/firestore/manage-data/transactions",
@@ -6496,6 +6633,14 @@ window.bkOpenReceipts=function(){
         "A leitura conjunta usou arquivos sintéticos Sicoob XLSX e PDF com texto. A prévia foi cancelada, sem gravação dos extratos.",
         "Mudanças de R8 são de interface e renderização; testes anteriores de sincronização, séries e importação permanecem identificados como históricos.",
         "Nenhuma gravação em dados reais do Firestore nesta revisão. Ambiente visual com conexão restrita ao emulador."
+      ]
+    },
+    "cashReadOnly": {
+      "escopo": "Consulta de caixa em memória e navegador isolado com emuladores; nenhum teste grava em produção.",
+      "cobertura": [
+        "Totais mensais e diários, mês parcial, dados inválidos e canais misturados.",
+        "Atualização em tempo real, recarga e funcionamento sem extrato importado.",
+        "Preservação dos lançamentos e extratos de teste e do cache local R8."
       ]
     }
   },
