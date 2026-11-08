@@ -6,9 +6,9 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V1">
+<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V2">
 <script>
-window.__BUILD_ID='FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V1';
+window.__BUILD_ID='FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V2';
 (function(){
   try{
     if('serviceWorker' in navigator){
@@ -1429,7 +1429,7 @@ let fbOk = false;
 let unsubListeners = [];
 
 // Blindagem pós-resgate: evita re-render pesado enquanto o usuário clica/digita.
-const APP_VERSION = 'FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V1';
+const APP_VERSION = 'FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V2';
 let renderTimer = null;
 let pendingRender = null;
 function modalAberto(){
@@ -1478,7 +1478,7 @@ function initFirebase(){
 // ── Fallback localStorage ──────────────────────────────
 const LS_KEY = 'bdr_data_v2_light';
 const LS_VER_KEY = 'bdr_build_version';
-try{ const previous=localStorage.getItem(LS_VER_KEY); if(previous!==APP_VERSION){ if(!['FINANCEIRO_BURGER_2026_10_20_R8','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2','FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1'].includes(previous))localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
+try{ const previous=localStorage.getItem(LS_VER_KEY); if(previous!==APP_VERSION){ if(!['FINANCEIRO_BURGER_2026_10_20_R8','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2','FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V1'].includes(previous))localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
 // Não limpa caches antigos a cada abertura; evita trabalho desnecessário no Chrome local.
 // try{ localStorage.removeItem('bdr_data_v1'); }catch(e){}
 // try{ localStorage.removeItem('bdr_data_v2'); }catch(e){}
@@ -4947,7 +4947,7 @@ window.bkOpenReceipts=function(){
     const closedDays=root.BurgerCashRunner?.state.closedDays||['2026-05-14','2026-06-14'],pending=[];
     const rows=months.filter(m=>(!from||m>=from)&&(!to||m<=to)).map(m=>{
       const p=BurgerMonthlyPlan.plan(m,state.rows,ledger,{currentMonth,closedDays});
-      if(p.closed)for(const issue of p.issues){const found=issue.match(/^Dia sem (?:caixa|vendas a confirmar): (\d{4}-\d{2}-\d{2})$/);if(found)pending.push(found[1]);}
+      if(p.closed&&!(p.existing.sales.length&&p.existing.motoboy.length))for(const issue of p.issues){const found=issue.match(/^Dia sem (?:caixa|vendas a confirmar): (\d{4}-\d{2}-\d{2})$/);if(found)pending.push(found[1]);}
       const serious=p.issues.filter(x=>x!=='Competência ainda aberta'&&!/^Dia sem (?:caixa|vendas a confirmar):/.test(x));
       const canDisplay=!serious.length;
       const status=!p.closed?(m>currentMonth?'Mês futuro · ':'Em andamento · ')+p.days+(p.days===1?' dia registrado':' dias registrados'):p.issues.length&&!serious.length?'Parcial · dias a conferir':p.issues.length?'Conferir dados do caixa':p.existing.sales.length&&p.existing.motoboy.length?'Registros encontrados; confira':p.rounding.length?'Total arredondado a centavos':'Sem fechamento completo';
@@ -5463,10 +5463,10 @@ window.financeReconnectAll=function(){window.BurgerCashRunner.reconnect();window
 </script>
 
 <script type="application/json" id="financeiro-release">{
-  "build": "FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V1",
+  "build": "FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V2",
   "base": {
     "url": "https://github.com/marcelomreidogado-cmd/financeiro-burgerdorei/blob/main/index.html",
-    "sha256": "c03465e3f9aa1db85ed6c4f74001a65448ae2e660c68f51672f5bc40823edee0"
+    "sha256": "350ca63d768372ac581f3b48e588a7aa9149d8edc24c34a121cebea1c6ff855c"
   },
   "changelog": [
     "Transações para criação, alteração, baixa e exclusão financeira; conflitos exigem revisão.",
