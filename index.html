@@ -6,9 +6,9 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2">
+<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1">
 <script>
-window.__BUILD_ID='FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2';
+window.__BUILD_ID='FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1';
 (function(){
   try{
     if('serviceWorker' in navigator){
@@ -1429,7 +1429,7 @@ let fbOk = false;
 let unsubListeners = [];
 
 // Blindagem pós-resgate: evita re-render pesado enquanto o usuário clica/digita.
-const APP_VERSION = 'FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2';
+const APP_VERSION = 'FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1';
 let renderTimer = null;
 let pendingRender = null;
 function modalAberto(){
@@ -1478,7 +1478,7 @@ function initFirebase(){
 // ── Fallback localStorage ──────────────────────────────
 const LS_KEY = 'bdr_data_v2_light';
 const LS_VER_KEY = 'bdr_build_version';
-try{ const previous=localStorage.getItem(LS_VER_KEY); if(previous!==APP_VERSION){ if(!['FINANCEIRO_BURGER_2026_10_20_R8','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1'].includes(previous))localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
+try{ const previous=localStorage.getItem(LS_VER_KEY); if(previous!==APP_VERSION){ if(!['FINANCEIRO_BURGER_2026_10_20_R8','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2'].includes(previous))localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
 // Não limpa caches antigos a cada abertura; evita trabalho desnecessário no Chrome local.
 // try{ localStorage.removeItem('bdr_data_v1'); }catch(e){}
 // try{ localStorage.removeItem('bdr_data_v2'); }catch(e){}
@@ -1575,6 +1575,8 @@ function finSnapshot(col,snap){
     clearTimeout(financeHealthTimer);financeHealthTimer=setTimeout(()=>financeMaybeHealth(),400);
   }
   finStatus();
+  window.BurgerCashRunner?.maybeStart();
+  if(col==='lancamentos')void window.BurgerCashRunner?.audit();
 }
 async function loadAll(){
   const epoch=++financeSync.epoch;
@@ -1615,7 +1617,11 @@ async function finUpdateMany(changes){
       if(!actual||actual._deleted)throw new Error('Registro removido em outro computador. Reabra a tela.');
       if(!c.expected||finVersion(actual)!==finVersion(c.expected))throw new Error('Este registro mudou em outro computador. Reabra para revisar os valores atuais.');
     });
+    const before=changes.flatMap((c,i)=>c.col==='lancamentos'?[{...snaps[i].data(),id:c.id}]:[]);
+    const after=changes.flatMap((c,i)=>c.col==='lancamentos'?[{...snaps[i].data(),...finClean(c.patch),id:c.id}]:[]);
+    const mark=await BurgerManualGuard.prepare(db,tx,after,before);
     changes.forEach((c,i)=>tx.update(refs[i],{...finClean(c.patch),_rev:(snaps[i].data()._rev||0)+1,updated_at:firebase.firestore.FieldValue.serverTimestamp()}));
+    mark();
     return true;
   });
 }
@@ -1658,7 +1664,9 @@ async function lancPersistMany(items,options={}){
     const refs=rows.map(r=>db.collection('lancamentos').doc(r.id));
     const snaps=await Promise.all(refs.map(r=>tx.get(r)));
     if(snaps.some(s=>s.exists))throw new Error('Esta operação já foi registrada ou excluída. Confira os lançamentos antes de repetir.');
+    const mark=await BurgerManualGuard.prepare(db,tx,rows);
     rows.forEach((r,i)=>tx.set(refs[i],{...finClean(r),updated_at:firebase.firestore.FieldValue.serverTimestamp()}));
+    mark();
   });
   return rows;
 }
@@ -1698,7 +1706,7 @@ async function fbSetMany(col, items){
 }
 async function fbDel(col,id){
   if(['lancamentos','agenda_financeira'].includes(col)){const r=finExpected(col,id);if(!r)throw new Error('Registro não encontrado.');return col==='agenda_financeira'?agDeleteReceipts([r]):finDeleteMany(col,[r]);}
-  finAssertReady([col]);await db.collection(col).doc(id).delete();
+  finAssertReady([col]);await BurgerManualGuard.removeOther(db,col,id);
 }
 
 async function fbBatch(col, items){
@@ -1732,7 +1740,7 @@ async function saveClientesMes(mes, count){
   if(count === null || count === undefined || count === ''){
     delete store.clientes_mes[mes];
     lsSave();
-    if(fbOk) await db.collection('clientes_mes').doc(mes).delete();
+    if(fbOk) await BurgerManualGuard.removeOther(db,'clientes_mes',mes);
     return;
   }
   store.clientes_mes[mes] = Number(count) || 0;
@@ -2278,7 +2286,10 @@ async function lancSaveSeriesEdit(context,data,scope='all'){
     const snaps=await Promise.all(refs.map(ref=>tx.get(ref)));
     for(let i=0;i<snaps.length;i++)if(!snaps[i].exists||finVersion(snaps[i].data())!==finVersion(context.rows[i]))throw Error('Outro computador alterou esta série. Feche e reabra a edição para conferir os valores atuais.');
     const actual=new Map(snaps.map((snap,i)=>[context.rows[i].id,snap]));
+    const before=context.rows.map(r=>({...r})),after=context.rows.map(r=>({...r,...(updates.find(u=>u.id===r.id)?.patch||{})}));
+    const mark=await BurgerManualGuard.prepare(db,tx,after,before);
     for(const change of updates){const snap=actual.get(change.id);tx.update(snap.ref,{...finClean(change.patch),_rev:(snap.data()._rev||0)+1,updated_at:firebase.firestore.FieldValue.serverTimestamp()});}
+    mark();
   });
   return {changed:model.affected.length};
 }
@@ -3365,6 +3376,8 @@ function auditoriaItens(){
   }
   if(!financeSync.ready||navigator.onLine===false||Object.values(financeSync.collections).some(s=>s.cached))add('Alta','Base sem confirmação atual','Diagnóstico parcial. Reconecte antes de interpretar os totais ou registrar alterações.',null,0,{source:'sistema'});
   for(const [col,state] of Object.entries(financeSync.collections))if(state.error)add('Alta','Falha de sincronização',`${col}: ${state.error}. Use Reconectar para restabelecer a leitura.`,null,0,{source:'sistema'});
+  if(window.BurgerCashIntegration?.state.status!=='ready'||window.BurgerCashRunner?.state.auditStatus!=='ready')add('Média','Conferência do caixa pendente','Não foi possível concluir a conferência do caixa com os lançamentos. Confira a conexão e aguarde a atualização.',null,0,{source:'sistema'});
+  for(const x of window.BurgerCashRunner?.state.audit||[]){const r=(store.lancamentos||[]).find(z=>z.id===x.id);add(x.severity,x.type,x.month+': '+x.message,r,r?Math.abs(+r.valor||0):0,r?{}:{source:'sistema'});}
   return out.sort((a,b)=>({Alta:0,Média:1,Baixa:2}[a.sev]-{Alta:0,Média:1,Baixa:2}[b.sev])||b.impacto-a.impacto);
 }
 function rAuditoria(){
@@ -3383,7 +3396,7 @@ function rAuditoria(){
     <div class="audit-card"><div class="audit-title">Vencido em aberto</div><div class="kpi-v" style="font-size:22px">${fmt(overdue)}</div><div class="audit-sub">Pagamentos e recebimentos sem baixa</div></div>
     <div class="audit-card"><div class="audit-title">Exposição a duplicidades</div><div class="kpi-v" style="font-size:22px">${fmt(duplicate)}</div><div class="audit-sub">Valor a conferir; não representa perda confirmada</div></div>
     <div class="audit-card"><div class="audit-title">Saúde do sistema</div><div class="audit-sub">${health?agEsc(new Date(health.at).toLocaleString('pt-BR'))+' · '+(health.complete?'base confirmada':'diagnóstico parcial'):'Aguardando diagnóstico'}<br>${store.lancamentos.length} lançamentos · ${store.agenda.length} recebimentos<br>${agEsc(APP_VERSION)}</div></div>
-    </div><div class="tb" style="margin-bottom:12px"><button class="btn bs" onclick="financeHealthRun('manual');rAuditoria()">↻ Autoauditoria</button><button class="btn bs" onclick="loadAll()">Reconectar</button><button class="btn bp" onclick="exportarAuditoriaCSV()">⬇️ Exportar auditoria CSV</button><button class="btn bs" onclick="financeDownloadHealth()">Diagnóstico e versão</button></div><p style="font-size:11px;color:var(--tx2)">Verificação semanal no primeiro acesso ou enquanto o sistema estiver aberto. Nenhuma correção ou exclusão automática. Valores dos alertas podem se sobrepor.</p><div class="audit-list">${rows||'<div class="es"><h3>Nenhuma exceção financeira identificada na base carregada</h3></div>'}</div>${mkPag(financeAuditPage,pages,'financeSetAuditPage')}</div>`;
+    </div><div class="tb" style="margin-bottom:12px"><button class="btn bs" onclick="financeHealthRun('manual');rAuditoria()">↻ Autoauditoria</button><button class="btn bs" onclick="financeReconnectAll()">Reconectar</button><button class="btn bp" onclick="exportarAuditoriaCSV()">⬇️ Exportar auditoria CSV</button><button class="btn bs" onclick="financeDownloadHealth()">Diagnóstico e versão</button></div><p style="font-size:11px;color:var(--tx2)">Verificação semanal no primeiro acesso ou enquanto o sistema estiver aberto. Nenhuma correção ou exclusão automática. Valores dos alertas podem se sobrepor.</p><div class="audit-list">${rows||'<div class="es"><h3>Nenhuma exceção financeira identificada na base carregada</h3></div>'}</div>${mkPag(financeAuditPage,pages,'financeSetAuditPage')}</div>`;
 }
 let financeAuditPage=1,financeAuditItems=[],financeHealthLatest=null;
 window.financeSetAuditPage=p=>{financeAuditPage=p;rAuditoria();};
@@ -3417,14 +3430,18 @@ async function lancRepairManagedSeries(gid){
     const refs=candidates.map(r=>db.collection('lancamentos').doc(r.id));
     const snaps=await Promise.all(refs.map(ref=>tx.get(ref)));
     if(!seed.exists||finVersion(seed.data())!==finVersion(anchor))throw new Error('Série alterada em outro computador. Reanalise.');
+    const newRows=candidates.filter((r,i)=>!snaps[i].exists);
+    const mark=await BurgerManualGuard.prepare(db,tx,newRows);
     if(snaps.some(s=>!s.exists))tx.update(seedRef,{_rev:(seed.data()._rev||0)+1,updated_at:firebase.firestore.FieldValue.serverTimestamp()});
     candidates.forEach((r,i)=>{if(!snaps[i].exists)tx.set(refs[i],{...finClean(r),status:'Pendente',data_efetivacao:null,_rev:1,updated_at:firebase.firestore.FieldValue.serverTimestamp()});});
+    mark();
   });return candidates;
 }
 function financeHealthRun(reason='manual'){
   const issues=auditoriaItens();
-  const complete=financeSync.ready&&navigator.onLine!==false&&FIN_COLLECTIONS.every(c=>!financeSync.collections[c]?.cached&&!financeSync.collections[c]?.pending);
-  const report={build:APP_VERSION,at:new Date().toISOString(),reason,complete,readOnly:true,scope:'Dados carregados nesta sessão; não verifica disponibilidade com o navegador fechado.',counts:{lancamentos:store.lancamentos.length,agenda:store.agenda.length,high:issues.filter(x=>x.sev==='Alta').length,medium:issues.filter(x=>x.sev==='Média').length},sync:JSON.parse(JSON.stringify(financeSync)),issues};
+  const cashSync={source:window.BurgerCashIntegration?.state.status||'waiting',audit:window.BurgerCashRunner?.state.auditStatus||'waiting'};
+  const complete=financeSync.ready&&navigator.onLine!==false&&FIN_COLLECTIONS.every(c=>!financeSync.collections[c]?.cached&&!financeSync.collections[c]?.pending)&&cashSync.source==='ready'&&cashSync.audit==='ready';
+  const report={build:APP_VERSION,at:new Date().toISOString(),reason,complete,readOnly:true,scope:'Dados carregados nesta sessão; não verifica disponibilidade com o navegador fechado.',counts:{lancamentos:store.lancamentos.length,agenda:store.agenda.length,high:issues.filter(x=>x.sev==='Alta').length,medium:issues.filter(x=>x.sev==='Média').length},sync:JSON.parse(JSON.stringify(financeSync)),cashSync,issues};
   financeHealthLatest=report;
   try{localStorage.setItem('bdr_health_v1',JSON.stringify(report));if(complete)localStorage.setItem('bdr_health_last_complete',String(Date.now()));}catch(e){console.warn('Diagnóstico não pôde ser armazenado localmente',e.message);}
   console.info('[Financeiro:autoauditoria]',report);return report;
@@ -4542,6 +4559,7 @@ window.render=function(m){
       const docs=await Promise.all(refs.map(ref=>tx.get(ref)));
       const accountRef=db.collection(COLLECTION).doc('sicoob-principal_account');
       const accountDoc=accounts.length?await tx.get(accountRef):null;
+      const mark=await BurgerManualGuard.prepareBarrier(db,tx);
       if(accountDoc?.exists&&accountDoc.data().account?.key!==accounts[0].key)throw Error('A conta do PDF difere da conta vinculada ao Burger. Nenhum movimento foi gravado.');
       let created=0,updated=0,duplicates=statements.length-batch.length;const merged=[];
       for(let i=0;i<docs.length;i++){
@@ -4550,13 +4568,15 @@ window.render=function(m){
         if(new TextEncoder().encode(JSON.stringify(statement)).length>800000)throw Error('Mês excede o limite de armazenamento; reduza os arquivos repetidos.');
         merged.push({old,statement,receipts:BurgerBankCore.receipts(statement,policy)});
       }
-      if(accounts.length&&!accountDoc.exists)tx.set(accountRef,{kind:'account',account:accounts[0],created_at:timestamp()});
+      const accountCreated=!!(accounts.length&&!accountDoc.exists);
+      if(accountCreated)tx.set(accountRef,{kind:'account',account:accounts[0],created_at:timestamp()});
       merged.forEach(({old,statement,receipts},i)=>{
         if(old&&old.contentHash===statement.id&&old.receipts?.policy===policy){duplicates++;return;}
         const now=timestamp();
         tx.set(refs[i],{schemaVersion:2,accountId:'sicoob-principal',month:statement.month,contentHash:statement.id,statement,receipts,created_at:old?.created_at||now,updated_at:now,_rev:(old?._rev||0)+1});
         if(old)updated++;else created++;
       });
+      if(created||updated||accountCreated)mark();
       return {created,updated,duplicates,documents:merged.map(({statement,receipts})=>({statement,receipts}))};
     });
   }
@@ -4729,6 +4749,7 @@ window.bkOpenReceipts=function(){
     ${state.tab==='channels'?BurgerCashIntegration.render(state.statements,state.from,state.to):state.tab==='cashPreview'?BurgerCashIntegration.preview(financeRaw.lancamentos,state.from,state.to,today().slice(0,7),!!financeSync.collections.lancamentos?.confirmed&&!financeSync.collections.lancamentos?.cached&&!financeSync.collections.lancamentos?.error):!state.statements.length?'<section class="bk-panel bk-empty"><h2>Importe os extratos mensais</h2><p>Selecione os extratos do Sicoob em Excel (.xlsx) ou PDF.</p></section>':!rows.length&&ms.every(m=>!m.available)?'<section class="bk-panel"><h2>Sem extrato neste intervalo</h2><p>Selecione outro mês ou importe o arquivo ausente.</p></section>':state.tab==='overview'?overview(model,rows,ms):state.tab==='monthly'?monthly(model,ms):state.tab==='partners'?partners(model,rows,ms):state.tab==='receipts'?receiptView(model,ms):state.tab==='reconcile'?reconcile(model):sources(model,rows)}
     </div>`;
     bind(c);
+    if(state.tab==='cashPreview')window.BurgerCashIntegration.bindPreview(c);
   }
   function bind(c){
     c.querySelector('[data-bank-import]')?.addEventListener('click',()=>c.querySelector('#bk-files').click());
@@ -4874,9 +4895,9 @@ window.bkOpenReceipts=function(){
     for(let i=1;i<=end;i++){const d=month+'-'+String(i).padStart(2,'0');if(!seen.has(d)&&!closedDays.includes(d))issues.push('Dia sem caixa: '+d);}
     const existing={sales:[],motoboy:[]};
     for(const r of ledger){const dates=[r.data_competencia,r.data_vencimento,r.data_efetivacao].filter(d=>validDate(d)&&d.startsWith(month));if(!dates.length)continue;
-      const cat=n(r.categoria),sub=n(r.subcategoria),desc=n(r.descricao),type=n(r.rec_desp);
+      const cat=n(r.categoria),sub=n(r.subcategoria),desc=n(r.descricao),cost=n(r.centro_custo),type=n(r.rec_desp);
       if(type==='contas a receber'&&(cat==='vendas mes'||/vendas?\s+(?:mes|bruta|total)/.test(desc)))existing.sales.push(r.id);
-      if(type==='contas a pagar'&&(sub==='motoboy'||/motoboy|moto boy/.test(desc)))existing.motoboy.push(r.id);
+      if(type==='contas a pagar'&&[cat,sub,desc,cost].some(v=>/moto\s*boy/.test(v)))existing.motoboy.push(r.id);
     }
     const roundTotal=v=>Math.round(Number(v.toLocaleString('en-US',{useGrouping:false,minimumFractionDigits:2,maximumFractionDigits:2}))*100),sales=roundTotal(salesRaw),moto=roundTotal(motoRaw);
     if(!Number.isSafeInteger(sales)||!Number.isSafeInteger(moto))issues.push('Soma fora do limite');
@@ -4884,6 +4905,7 @@ window.bkOpenReceipts=function(){
   }
   root.BurgerMonthlyPlan={plan};
 })(typeof window==='undefined'?globalThis:window);
+
 
 (function(root){
   'use strict';
@@ -4906,7 +4928,7 @@ window.bkOpenReceipts=function(){
       sourceUnsubscribe=sourceDb.collection('caixa').onSnapshot({includeMetadataChanges:true},snap=>{
         if(epoch!==sourceEpoch)return;
         if(snap.metadata.fromCache||snap.metadata.hasPendingWrites){state.status='unconfirmed';notify();return;}
-        state.rows=snap.docs.map(d=>({...d.data(),id:d.id}));state.status='ready';state.error='';notify();
+        state.rows=snap.docs.map(d=>({...d.data(),id:d.id}));state.status='ready';state.error='';notify();root.BurgerCashRunner?.maybeStart();void root.BurgerCashRunner?.audit();
       },err=>{if(epoch!==sourceEpoch)return;state.status='error';state.error=String(err.message||err);notify();});
     }catch(e){if(epoch!==sourceEpoch)return;state.status='error';state.error=String(e.message||e);notify();}
   }
@@ -4922,7 +4944,7 @@ window.bkOpenReceipts=function(){
     if(state.status==='error')return '<section class="bk-panel"><p>Não foi possível consultar o caixa. Verifique a conexão e tente novamente.</p></section>';
     if(state.status!=='ready'||!ledgerConfirmed)return '<section class="bk-panel"><p>Aguardando confirmação do caixa e dos lançamentos.</p></section>';
     const months=[...new Set(state.rows.map(r=>(r.data||'').slice(0,7)).filter(m=>/^\d{4}-(0[1-9]|1[0-2])$/.test(m)))].sort();
-    const closedDays=['2026-05-14','2026-06-14'],pending=[];
+    const closedDays=root.BurgerCashRunner?.state.closedDays||['2026-05-14','2026-06-14'],pending=[];
     const rows=months.filter(m=>(!from||m>=from)&&(!to||m<=to)).map(m=>{
       const p=BurgerMonthlyPlan.plan(m,state.rows,ledger,{currentMonth,closedDays});
       if(p.closed)for(const issue of p.issues){const found=issue.match(/^Dia sem (?:caixa|vendas a confirmar): (\d{4}-\d{2}-\d{2})$/);if(found)pending.push(found[1]);}
@@ -4933,10 +4955,17 @@ window.bkOpenReceipts=function(){
     });
     const dates=[...new Set(pending)].sort();
     const actions=dates.length?'<p>Dias sem movimento confirmado: '+dates.map(d=>esc(date(d))).join(', ')+'.</p>':'';
+    const pendingRunner=root.BurgerCashRunner?.state;
+    const problems=(pendingRunner?.months||[]).filter(m=>m.status==='pending');
+    const runnerNotice=pendingRunner?.status==='pending'?'<p>Fechamento pendente: '+esc(pendingRunner.message||problems.map(m=>m.month+': '+m.message).join('; ')||'confira a conexão.')+'</p>':'';
     const daily=BurgerCashModel.dailyCash(state.rows).filter(r=>(!from||r.date.slice(0,7)>=from)&&(!to||r.date.slice(0,7)<=to)).map(r=>cells([date(r.date),r.sales===null?'A conferir':money(r.sales),r.motoboy===null?'A conferir':money(r.motoboy),r.valid?'Registrado':'Verificar dados']));
-    return '<section class="bk-panel"><h2>Prévia de fechamento do caixa</h2><p>Os valores são somados a partir dos dias registrados no Caixa. Meses incompletos aparecem como parciais. Esta consulta não cria lançamentos nem altera o DRE.</p>'+table(['Mês','Vendas no caixa','Motoboy no caixa','Vendas no Financeiro','Motoboy no Financeiro','Situação'],rows)+actions+'</section><section class="bk-panel"><details><summary>Ver vendas e motoboy por dia</summary>'+table(['Dia','Vendas registradas','Motoboy registrado','Situação'],daily)+'</details></section>';
+    return '<section class="bk-panel"><h2>Prévia de fechamento do caixa</h2><p>Os valores são somados a partir dos dias registrados no Caixa. Meses incompletos aparecem como parciais. O fechamento automático ainda está em preparação e não cria lançamentos nesta versão.</p>'+runnerNotice+table(['Mês','Vendas no caixa','Motoboy no caixa','Vendas no Financeiro','Motoboy no Financeiro','Situação'],rows)+actions+'</section><section class="bk-panel"><details><summary>Ver vendas e motoboy por dia</summary>'+table(['Dia','Vendas registradas','Motoboy registrado','Situação'],daily)+'</details></section>';
   }
-  root.BurgerCashIntegration={state,start,render,preview};
+  function bindPreview(container){
+    container.querySelectorAll('[data-cash-confirm-day]').forEach(btn=>{btn.onclick=()=>{const d=btn.dataset.cashConfirmDay;if(!/^\d{4}-\d{2}-\d{2}$/.test(d||''))return;
+      confirm_('Confirmar loja fechada','Confirma que a loja não abriu em '+date(d)+'?',()=>financeAction(async()=>{finAssertReady(['lancamentos']);const days=await root.BurgerClosedDays.confirm(db,d);if(root.BurgerCashRunner){root.BurgerCashRunner.state.closedDays=days;root.BurgerCashRunner.trigger();void root.BurgerCashRunner.audit();}root.BurgerBankUI.render();},'Dia fechado confirmado.'));};});
+  }
+  root.BurgerCashIntegration={state,start,render,preview,bindPreview};
 })(window);
 
 (function(root){
@@ -5050,6 +5079,342 @@ window.bkOpenReceipts=function(){
   root.BurgerBackupCompare={compare,unpack};
 })(typeof window==='undefined'?globalThis:window);
 
+(function(root){
+  'use strict';
+  const n=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+  function affected(rows){
+    const items=new Map();
+    for(const r of rows){const type=n(r.rec_desp),cat=n(r.categoria),sub=n(r.subcategoria),desc=n(r.descricao),cost=n(r.centro_custo);
+      let kind=null;if(type==='contas a receber'&&(cat==='vendas mes'||/vendas?\s+(?:mes|bruta|total)/.test(desc)))kind='sales';
+      if(type==='contas a pagar'&&[cat,sub,desc,cost].some(v=>/moto\s*boy/.test(v)))kind='motoboy';
+      if(!kind)continue;
+      for(const d of [r.data_competencia,r.data_vencimento,r.data_efetivacao])if(/^\d{4}-(0[1-9]|1[0-2])-\d{2}$/.test(d||'')){const month=d.slice(0,7),key=month+'|'+kind;items.set(key,{month,kind});}
+    }
+    return [...items.values()].sort((a,b)=>a.month.localeCompare(b.month)||a.kind.localeCompare(b.kind));
+  }
+  async function prepare(db,tx,rows,oldRows=[]){
+    const before=new Map(oldRows.filter(r=>r?.id).map(r=>[r.id,r]));
+    const entries=affected([...oldRows,...rows]),months=[...new Set(entries.map(e=>e.month))];if(!months.length)return ()=>{};
+    const entering=new Map();
+    for(const row of rows){if(row._deleted)continue;const original=before.get(row.id),oldKeys=new Set(affected(original&&!original._deleted?[original]:[]).map(e=>e.month+'|'+e.kind));
+      for(const e of affected([row]))if(!oldKeys.has(e.month+'|'+e.kind)&&row.id!=='caixa_fechamento_'+e.month+'_'+e.kind)entering.set(e.month+'|'+e.kind,e);
+    }
+    const guards=[db.collection('caixa_fechamento_guards').doc('global')];
+    const auto=[...entering.values()].map(e=>db.collection('lancamentos').doc('caixa_fechamento_'+e.month+'_'+e.kind));
+    const snaps=await Promise.all([...guards,...auto].map(ref=>tx.get(ref)));
+    if(snaps.slice(guards.length).some(s=>s.exists))throw Error('Já existe um fechamento automático para este mês. Confira antes de lançar novamente.');
+    return ()=>guards.forEach((ref,i)=>{const data=snaps[i].exists?snaps[i].data():{},rev=data.revision??0;if(!Number.isSafeInteger(rev)||rev<0||typeof (data.active??{})!=='object'||Array.isArray(data.active))throw Error('Proteção mensal inválida. Confira a auditoria.');tx.set(ref,{...data,active:data.active||{},revision:rev+1,updated_at:new Date().toISOString()},{merge:true});});
+  }
+  async function removeOther(db,col,id){
+    if(!['centrocusto','patrimonio','clientes_mes'].includes(col)||typeof id!=='string'||!id||id.includes('/'))throw Error('Exclusão inválida.');
+    const target=db.collection(col).doc(id),guard=db.collection('caixa_fechamento_guards').doc('global');
+    return db.runTransaction(async tx=>{
+      const [row,snap]=await Promise.all([tx.get(target),tx.get(guard)]);if(!row.exists)return false;
+      const data=snap.exists?snap.data():{},rev=data.revision??0;
+      if(!Number.isSafeInteger(rev)||rev<0||typeof (data.active??{})!=='object'||Array.isArray(data.active))throw Error('Proteção mensal inválida. Confira a auditoria.');
+      tx.delete(target);tx.set(guard,{...data,active:data.active||{},revision:rev+1,updated_at:new Date().toISOString()},{merge:true});return true;
+    });
+  }
+  async function prepareBarrier(db,tx){
+    const ref=db.collection('caixa_fechamento_guards').doc('global'),snap=await tx.get(ref),data=snap.exists?snap.data():{},rev=data.revision??0;
+    if(!Number.isSafeInteger(rev)||rev<0||rev===Number.MAX_SAFE_INTEGER||typeof (data.active??{})!=='object'||Array.isArray(data.active))throw Error('Proteção mensal inválida. Confira a auditoria.');
+    return ()=>tx.set(ref,{...data,active:data.active||{},revision:rev+1,updated_at:new Date().toISOString()},{merge:true});
+  }
+  root.BurgerManualGuard={affected,prepare,removeOther,prepareBarrier};
+})(typeof window==='undefined'?globalThis:window);
+
+(function(root){
+  'use strict';
+  // The two projects do not share a transaction. This detects changes around a
+  // write but cannot lock the source; callers must treat that limitation as fatal.
+  function stable(value){
+    if(value===null||value===undefined)return null;
+    if(typeof value==='number'){if(!Number.isFinite(value))throw Error('Valor inválido na origem');return value;}
+    if(['string','boolean'].includes(typeof value))return value;
+    if(Array.isArray(value))return value.map(stable);
+    if(typeof value==='object'){
+      if(typeof value.toMillis==='function')return {seconds:value.seconds,nanoseconds:value.nanoseconds};
+      return Object.fromEntries(Object.keys(value).sort().filter(k=>!k.startsWith('__')).map(k=>[k,stable(value[k])]));
+    }
+    throw Error('Tipo inesperado na origem');
+  }
+  function canonical(rows,month,kind='all'){
+    if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month||''))throw Error('Competência inválida');
+    if(!['all','sales','motoboy'].includes(kind))throw Error('Tipo inválido');
+    const filtered=rows.filter(r=>String(r.data||'').slice(0,7)===month).map(r=>stable({id:r.id,data:r.data,...(kind!=='motoboy'?{vendas:r.vendas}:{}),...(kind!=='sales'?{motoboys:r.motoboys}:{})}));
+    filtered.sort((a,b)=>String(a.data).localeCompare(String(b.data))||String(a.id).localeCompare(String(b.id)));
+    if(filtered.some(x=>!x.id)||new Set(filtered.map(x=>x.id)).size!==filtered.length)throw Error('Identidade da origem inválida ou repetida');
+    return JSON.stringify(filtered);
+  }
+  async function hash(rows,month,cryptoObject=root.crypto,kind='all'){
+    const bytes=new TextEncoder().encode(canonical(rows,month,kind));
+    return [...new Uint8Array(await cryptoObject.subtle.digest('SHA-256',bytes))].map(v=>v.toString(16).padStart(2,'0')).join('');
+  }
+  async function compare(first,second,month,cryptoObject){const [a,b]=await Promise.all([hash(first,month,cryptoObject),hash(second,month,cryptoObject)]);return {matches:a===b,first:a,second:b};}
+  root.BurgerSourceCheck={canonical,hash,compare};
+})(typeof window==='undefined'?globalThis:window);
+
+(function(root){
+  'use strict';
+  // Experimental primitive, NOT wired to the production UI. It cannot by itself
+  // prevent simultaneous manual entries or make cross-project reads atomic.
+  async function createMissing(db,plan,sourceHash,expectedGuardRevision){
+    const hashes=typeof sourceHash==='string'?{all:sourceHash,sales:sourceHash,motoboy:sourceHash}:sourceHash;
+    if(!db||!plan||plan.issues.length||!plan.closed||!Array.isArray(plan.proposals)||!hashes||!['all','sales','motoboy'].every(k=>/^[a-f0-9]{64}$/i.test(hashes[k]||''))||!Number.isSafeInteger(expectedGuardRevision)||expectedGuardRevision<0)throw Error('Prévia de fechamento inválida');
+    const proposals=plan.proposals;
+    if(!proposals.length)return {created:[],already:[]};
+    const expected=new Set(['sales','motoboy']);
+    if(new Set(proposals.map(p=>p.type)).size!==proposals.length||proposals.some(p=>!expected.has(p.type)||p.id!=='caixa_fechamento_'+plan.month+'_'+p.type||!Number.isSafeInteger(p.cents)||p.cents<=0))throw Error('Proposta de fechamento inválida');
+    const [y,m]=plan.month.split('-').map(Number),dt=plan.month+'-'+String(new Date(Date.UTC(y,m,0)).getUTCDate()).padStart(2,'0');
+    const refs=proposals.map(p=>db.collection('lancamentos').doc(p.id)),guard=db.collection('caixa_fechamento_guards').doc('global');
+    try{return await db.runTransaction(async tx=>{
+      const [guardSnapshot,...snapshots]=await Promise.all([tx.get(guard),...refs.map(ref=>tx.get(ref))]);
+      const guardData=guardSnapshot.exists?guardSnapshot.data():{},revision=guardData.revision||0;
+      if(revision!==expectedGuardRevision){const err=new Error('Lançamentos modificados durante o fechamento; atualize a conferência.');err.code='cash-guard-changed';throw err;}
+      if(guardData.active?.[plan.month]!==true)throw Error('Proteção da competência ainda não foi ativada.');
+      const created=[],already=[];
+      proposals.forEach((p,i)=>{
+        if(snapshots[i].exists){already.push(p.id);return;}
+        const sales=p.type==='sales';
+        const data={rec_desp:sales?'Contas a receber':'Contas a pagar',categoria:sales?'Vendas Mes':'Despesas com pessoal',subcategoria:sales?'Produtos Geral':'Motoboy',categoria_id:sales?'grp_1xooy0a':'grp_16a9nlz',subcategoria_id:sales?'sub_1xju5oj':'sub_1696dnh',dre_id:sales?'rec_bruta':'desp_pes',centro_custo:sales?'Vendas Mes':'Motoboy',descricao:(sales?'Vendas do mês':'Motoboy do mês')+' — '+plan.month,valor:p.cents/100,data_competencia:dt,data_vencimento:dt,data_efetivacao:dt,status:'Concluído',forma_pagamento:'Não informado',instituicao:'Não informada',origem_integracao:'caixa_burger',integracao_competencia:plan.month,integracao_tipo:p.type,integracao_hash:hashes[p.type],integracao_hash_total:hashes.all,integracao_regras:'experimental-v1',integracao_fracoes:(plan.rounding||[]).filter(r=>sales?!r.field.includes(' motoboy '):r.field.includes(' motoboy ')),_integrity:1,_rev:1,created_at:new Date().toISOString()};
+        tx.set(refs[i],data);created.push(p.id);
+      });
+      if(created.length)tx.set(guard,{...guardData,revision:revision+1,updated_at:new Date().toISOString(),last_integration_hash:hashes.all},{merge:true});
+      return {created,already};
+    });}catch(e){
+      if(e.code==='permission-denied'){
+        const latest=await guard.get({source:'server'}),revision=latest.exists?(latest.data().revision||0):0;
+        if(revision!==expectedGuardRevision){const changed=new Error('Lançamentos modificados durante o fechamento; atualize a conferência.');changed.code='cash-guard-changed';throw changed;}
+      }
+      throw e;
+    }
+  }
+  root.BurgerMonthlyWriter={createMissing};
+})(typeof window==='undefined'?globalThis:window);
+
+(function(root){
+  'use strict';
+  // The posting destination must still exist with the expected identity and
+  // DRE class when the transaction commits. No historical entry is modified.
+  const specs={sales:{categoria:'Vendas Mes',subcategoria:'Produtos Geral',categoria_id:'grp_1xooy0a',subcategoria_id:'sub_1xju5oj',dre_id:'rec_bruta'},motoboy:{categoria:'Despesas com pessoal',subcategoria:'Motoboy',categoria_id:'grp_16a9nlz',subcategoria_id:'sub_1696dnh',dre_id:'desp_pes'}};
+  const norm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/\s+/g,' ');
+  function matches(d,s){return !!d&&!d._deleted&&!d.deleted&&!d.deleted_at&&norm(d.categoria)===norm(s.categoria)&&norm(d.subcategoria)===norm(s.subcategoria)&&(d.categoria_id||d.grupo_id)===s.categoria_id&&(d.subcategoria_id||d.sub_id||d.cc_id)===s.subcategoria_id&&d.dre_id===s.dre_id;}
+  async function createMissing(db,plan,sourceHash,revision){
+    if(!root.BurgerMonthlyWriter?.createMissing||!db||!Array.isArray(plan?.proposals))throw Error('Conferência do plano de contas indisponível.');
+    if(!plan.proposals.length)return root.BurgerMonthlyWriter.createMissing(db,plan,sourceHash,revision);
+    const kinds=[...new Set(plan.proposals.map(p=>p.type))];if(kinds.some(k=>!Object.hasOwn(specs,k)))throw Error('Tipo de fechamento inválido.');
+    const chart=await db.collection('centrocusto').get({source:'server'});
+    if(chart.metadata.fromCache||chart.metadata.hasPendingWrites)throw Error('Aguardando confirmação do plano de contas.');
+    const refs=kinds.map(kind=>{const found=chart.docs.filter(d=>matches(d.data(),specs[kind]));if(found.length!==1)throw Error('Categoria do fechamento alterada ou duplicada no plano de contas. Confira antes de continuar.');return {kind,ref:found[0].ref};});
+    const guarded={collection:(...args)=>db.collection(...args),runTransaction:fn=>db.runTransaction(async tx=>{
+      const current=await Promise.all(refs.map(x=>tx.get(x.ref)));
+      if(current.some((snap,i)=>!snap.exists||!matches(snap.data(),specs[refs[i].kind])))throw Error('O plano de contas mudou durante o fechamento. Confira antes de continuar.');
+      return fn(tx);
+    })};
+    return root.BurgerMonthlyWriter.createMissing(guarded,plan,sourceHash,revision);
+  }
+  root.BurgerMonthlyChartGuard={createMissing};
+})(typeof window==='undefined'?globalThis:window);
+
+(function(root){
+  'use strict';
+  // Isolated prototype. Never retry begin() after losing ownership of a source lock.
+  const validMonth=m=>/^\d{4}-(0[1-9]|1[0-2])$/.test(m||'');
+  function revision(snapshot){const value=snapshot.exists?snapshot.data().revision:0;if(!Number.isSafeInteger(value)||value<0)throw Error('Revisão da integração inválida.');return value;}
+  async function readRevision(finance){const s=await finance.collection('caixa_fechamento_guards').doc('global').get({source:'server'});return revision(s);}
+  async function acquire(source,month,owner,serverTimestamp){
+    if(!validMonth(month)||typeof owner!=='string'||owner.length<16||owner.length>100)throw Error('Bloqueio inválido');
+    const ref=source.collection('caixa_integracao_locks').doc(month);
+    return source.runTransaction(async tx=>{const snap=await tx.get(ref);if(snap.exists&&snap.data().active)throw Error('Competência já está em conferência.');tx.set(ref,{owner,active:true,updated_at:serverTimestamp()});return true;});
+  }
+  async function begin(finance,month,expected){
+    if(!validMonth(month)||!Number.isSafeInteger(expected))throw Error('Conferência inválida');
+    const ref=finance.collection('caixa_fechamento_guards').doc('global');
+    try{return await finance.runTransaction(async tx=>{const s=await tx.get(ref),rev=revision(s),data=s.exists?s.data():{};
+      if(rev!==expected){const e=new Error('Os lançamentos mudaram. Reinicie a conferência com uma nova trava.');e.code='cash-guard-changed';throw e;}
+      const active={...(data.active||{}),[month]:true};tx.set(ref,{...data,active,revision:rev+1,updated_at:new Date().toISOString()});return rev+1;});}
+    catch(e){if(e.code==='permission-denied'&&await readRevision(finance)!==expected){const changed=new Error('Os lançamentos mudaram. Reinicie a conferência com uma nova trava.');changed.code='cash-guard-changed';throw changed;}throw e;}
+  }
+  async function fence(finance){
+    const ref=finance.collection('caixa_fechamento_guards').doc('global');
+    for(let attempt=0;attempt<8;attempt++){
+      let previous=null;
+      try{return await finance.runTransaction(async tx=>{const s=await tx.get(ref),rev=revision(s),data=s.exists?s.data():{};previous=rev;tx.set(ref,{...data,active:data.active||{},revision:rev+1,updated_at:new Date().toISOString()});return rev+1;});}
+      catch(e){if(e.code!=='permission-denied'||previous===null||attempt===7)throw e;if(await readRevision(finance)===previous)throw e;}
+    }
+    throw Error('Não foi possível confirmar a proteção.');
+  }
+  async function release(source,month,owner,serverTimestamp){
+    const ref=source.collection('caixa_integracao_locks').doc(month);
+    return source.runTransaction(async tx=>{const s=await tx.get(ref);if(!s.exists||!s.data().active)return false;if(s.data().owner!==owner)throw Error('Outra conferência assumiu a trava.');tx.set(ref,{owner,active:false,updated_at:serverTimestamp()});return true;});
+  }
+  // Invalidate any stale Financeiro transaction before unlocking the source.
+  async function recover(finance,source,month,serverTimestamp){
+    const ref=source.collection('caixa_integracao_locks').doc(month),s=await ref.get({source:'server'});
+    if(!s.exists||!s.data().active)return false;
+    await fence(finance);return release(source,month,s.data().owner,serverTimestamp);
+  }
+  root.BurgerCashCoordination={readRevision,acquire,begin,fence,release,recover};
+})(typeof window==='undefined'?globalThis:window);
+
+(function(root){
+  'use strict';
+  // Prototype only: requires both prototype rule sets AND draft-enabled cash clients.
+  // It is intentionally not wired to application startup or production.
+  async function readRows(db,col){const snap=await db.collection(col).get({source:'server'});if(snap.metadata.fromCache||snap.metadata.hasPendingWrites)throw Error('Sem confirmação atual do servidor.');return snap.docs.map(d=>({...d.data(),id:d.id}));}
+  async function closeMonth({finance,source,month,currentMonth,closedDays,owner,serverTimestamp,cryptoObject}){
+    const opts={currentMonth,closedDays},check=(a,b)=>root.BurgerMonthlyPlan.plan(month,a,b,opts);
+    let [cash,ledger]=await Promise.all([readRows(source,'caixa'),readRows(finance,'lancamentos')]);
+    const initial=check(cash,ledger);
+    if(initial.issues.length||!initial.proposals.length)return {status:'review-or-existing',plan:initial};
+    const beforeRevision=await root.BurgerCashCoordination.readRevision(finance);let acquired=false;
+    try{
+      await root.BurgerCashCoordination.acquire(source,month,owner,serverTimestamp);acquired=true;
+      const revision=await root.BurgerCashCoordination.begin(finance,month,beforeRevision);
+      [cash,ledger]=await Promise.all([readRows(source,'caixa'),readRows(finance,'lancamentos')]);
+      const plan=check(cash,ledger);
+      if(plan.issues.length||!plan.proposals.length)return {status:'review-or-existing',plan};
+      const hashes=Object.fromEntries(await Promise.all(['all','sales','motoboy'].map(async k=>[k,await root.BurgerSourceCheck.hash(cash,month,cryptoObject,k)])));
+      const reread=await readRows(source,'caixa');
+      if(!(await root.BurgerSourceCheck.compare(cash,reread,month,cryptoObject)).matches)throw Error('O caixa mudou durante a conferência.');
+      const lock=await source.collection('caixa_integracao_locks').doc(month).get({source:'server'});
+      if(!lock.exists||!lock.data().active||lock.data().owner!==owner)throw Error('A conferência do caixa foi interrompida.');
+      const result=await root.BurgerMonthlyChartGuard.createMissing(finance,plan,hashes,revision);
+      return {status:'created',result,plan,hash:hashes.all};
+    }finally{
+      if(acquired){
+        // Never release the source if fencing fails. Recovery can fence and release later.
+        await root.BurgerCashCoordination.fence(finance);
+        await root.BurgerCashCoordination.release(source,month,owner,serverTimestamp);
+      }
+    }
+  }
+  root.BurgerAutoClosePrototype={closeMonth};
+})(typeof window==='undefined'?globalThis:window);
+
+(function(root){
+  'use strict';
+  const defaults=['2026-05-14','2026-06-14'];
+  function valid(s){if(!/^\d{4}-\d{2}-\d{2}$/.test(s||''))return false;const d=new Date(s+'T12:00:00Z');return !Number.isNaN(d.valueOf())&&d.toISOString().slice(0,10)===s;}
+  function read(snap){const d=snap.exists?snap.data():{},list=d.closedDays||[];if(!Array.isArray(list)||list.length>1200||list.some(x=>!valid(x)))throw Error('Confirmações de dias fechados inválidas.');return [...new Set([...defaults,...list])].sort();}
+  async function load(db){return read(await db.collection('caixa_fechamento_config').doc('main').get({source:'server'}));}
+  async function confirm(db,date){
+    if(!valid(date))throw Error('Data inválida.');
+    const cfg=db.collection('caixa_fechamento_config').doc('main'),guard=db.collection('caixa_fechamento_guards').doc('global');
+    for(let attempt=0;attempt<6;attempt++){
+      let readRevision=null;
+      try{return await db.runTransaction(async tx=>{
+        const [c,g]=await Promise.all([tx.get(cfg),tx.get(guard)]),days=read(c),data=g.exists?g.data():{},rev=data.revision??0;readRevision=rev;
+        if(days.includes(date))return days;
+        if(days.length>=1200||!Number.isSafeInteger(rev)||rev<0)throw Error('Limite ou proteção de fechamento inválida.');
+        const next=[...days,date].sort();
+        tx.set(cfg,{closedDays:next,updated_at:new Date().toISOString()},{merge:true});
+        tx.set(guard,{...data,active:data.active||{},revision:rev+1,updated_at:new Date().toISOString()},{merge:true});
+        return next;
+      });}catch(e){
+        if(e.code!=='permission-denied'||readRevision===null||attempt===5)throw e;
+        const latest=await guard.get({source:'server'}),revision=latest.exists?latest.data().revision:0;
+        if(revision===readRevision)throw e;
+      }
+    }
+    throw Error('Não foi possível confirmar o dia. Tente novamente.');
+  }
+  root.BurgerClosedDays={defaults,load,confirm,read};
+})(typeof window==='undefined'?globalThis:window);
+
+(function(root){
+  'use strict';
+  async function inspect(cash,ledger,cryptoObject,closedDays=['2026-05-14','2026-06-14']){
+    const managed=ledger.filter(r=>r.origem_integracao==='caixa_burger'&&!r._deleted&&!r.deleted&&!r.deleted_at&&/^\d{4}-(0[1-9]|1[0-2])$/.test(r.integracao_competencia||''));
+    const months=[...new Set(managed.map(r=>r.integracao_competencia))].sort(),issues=[];
+    for(const month of months){
+      const rows=cash.filter(r=>String(r.data||'').startsWith(month)),docs=managed.filter(r=>r.integracao_competencia===month);
+      if(!rows.length){issues.push({month,severity:'Alta',type:'Origem indisponível',message:'Não há dados do caixa para conferir o fechamento.'});continue;}
+      const plan=root.BurgerMonthlyPlan.plan(month,cash,ledger,{currentMonth:'9999-12',closedDays});
+      for(const doc of docs){
+        const kind=doc.integracao_tipo,expected=kind==='sales'?plan.salesCents:kind==='motoboy'?plan.motoboyCents:null;
+        if(!doc.integracao_hash||!['sales','motoboy'].includes(kind)){issues.push({month,id:doc.id,severity:'Alta',type:'Referência incompleta',message:'Fechamento automático sem referência suficiente para conferência.'});continue;}
+        const actual=Math.round(Number(doc.valor)*100);
+        if(plan.issues.length)issues.push({month,id:doc.id,severity:'Alta',type:'Caixa incompleto',message:'O caixa possui dados ausentes ou inválidos para este fechamento.'});
+        else if(!Number.isSafeInteger(actual)||actual!==expected)issues.push({month,id:doc.id,severity:'Alta',type:'Valor divergente',message:'O valor do fechamento diverge do total atual do caixa.'});
+        else if(await root.BurgerSourceCheck.hash(cash,month,cryptoObject,kind)!==doc.integracao_hash)issues.push({month,id:doc.id,severity:'Média',type:'Detalhamento alterado',message:'O detalhamento do caixa mudou após o fechamento; o total permanece igual.'});
+      }
+    }
+    return issues;
+  }
+  root.BurgerIntegrationAudit={inspect};
+})(typeof window==='undefined'?globalThis:window);
+
+(function(root){
+  'use strict';
+  // Available only in an isolated preview until coordinated deployment is ready.
+  let running=false,dirty=false,urgent=false,timer=null,timerAt=0,lastRun=0,auditGeneration=0,configUnsubscribe=null,configEpoch=0;
+  const state={status:'waiting',months:[],message:'',audit:[],auditStatus:'waiting',closedDays:['2026-05-14','2026-06-14']};
+  function refresh(){if(typeof CM!=='undefined'&&CM==='extratos'&&root.BurgerBankUI?.state.tab==='cashPreview')root.BurgerBankUI.render();}
+  function ready(){return !!(root.BurgerCashIntegration?.state.status==='ready'&&root.BurgerCashIntegration.state.sourceDb&&financeSync.collections.lancamentos?.confirmed&&!financeSync.collections.lancamentos?.cached&&!financeSync.collections.lancamentos?.error&&navigator.onLine!==false);}
+  function schedule(delay=1000){
+    if(!root.__CASH_E2E_TEST__)return;
+    const at=Date.now()+delay;if(timer!==null&&timerAt<=at)return;
+    if(timer!==null)clearTimeout(timer);
+    timerAt=at;timer=setTimeout(()=>{timer=null;timerAt=0;void run();},delay);
+  }
+  async function maybeRecover(source,month){
+    const ref=source.collection('caixa_integracao_locks').doc(month),snap=await ref.get({source:'server'});
+    if(!snap.exists||!snap.data().active)return;
+    const updated=snap.data().updated_at?.toMillis?.();
+    if(!Number.isFinite(updated)||Date.now()-updated<120000)throw Error('Outra conferência está em andamento.');
+    await root.BurgerCashCoordination.recover(db,source,month,()=>firebase.firestore.FieldValue.serverTimestamp());
+  }
+  async function run(){
+    if(!root.__CASH_E2E_TEST__)return;
+    if(running){dirty=true;return;}
+    if(!ready()){schedule(5000);return;}
+    dirty=false;urgent=false;running=true;state.status='running';state.months=[];refresh();
+    try{
+      const source=root.BurgerCashIntegration.state.sourceDb,current=today().slice(0,7),months=[...new Set(root.BurgerCashIntegration.state.rows.map(r=>String(r.data||'').slice(0,7)).filter(m=>/^\d{4}-(0[1-9]|1[0-2])$/.test(m)&&m<current))].sort();
+      state.closedDays=await root.BurgerClosedDays.load(db);
+      for(const month of months){
+        if(!ready())throw Error('Aguardando sincronização.');
+        try{
+          await maybeRecover(source,month);
+          const result=await root.BurgerAutoClosePrototype.closeMonth({finance:db,source,month,currentMonth:current,closedDays:state.closedDays,owner:crypto.randomUUID(),serverTimestamp:()=>firebase.firestore.FieldValue.serverTimestamp(),cryptoObject:crypto});
+          state.months.push({month,status:result.status,created:result.result?.created||[],issues:result.plan?.issues||[]});
+        }catch(e){state.months.push({month,status:'pending',message:String(e.message||e)});}
+      }
+      state.status=state.months.some(x=>x.status==='pending')?'pending':'ready';
+      lastRun=Date.now();
+    }catch(e){state.status='pending';state.message=String(e.message||e);}
+    finally{running=false;refresh();if(dirty&&urgent)schedule(100);else if(state.status==='pending')schedule(60000);else if(dirty)schedule(Math.max(100,60000-(Date.now()-lastRun)));}
+  }
+  function watchConfig(){
+    if(configUnsubscribe||!db||!root.__CASH_E2E_TEST__)return;
+    const epoch=++configEpoch;
+    configUnsubscribe=db.collection('caixa_fechamento_config').doc('main').onSnapshot({includeMetadataChanges:true},snap=>{
+      if(epoch!==configEpoch)return;
+      if(snap.metadata.fromCache||snap.metadata.hasPendingWrites)return;
+      try{state.closedDays=root.BurgerClosedDays.read(snap);trigger();void audit();refresh();}
+      catch(e){state.status='pending';state.message=String(e.message||e);}
+    },e=>{if(epoch!==configEpoch)return;state.status='pending';state.message=String(e.message||e);});
+  }
+  function maybeStart(){watchConfig();dirty=true;if(!running)schedule(lastRun?Math.max(100,60000-(Date.now()-lastRun)):1000);}
+  async function audit(){
+    const generation=++auditGeneration;
+    if(!ready()){state.auditStatus='waiting';if(typeof CM!=='undefined'&&CM==='auditoria')safeRender(CM);return;}
+    state.auditStatus='running';if(typeof CM!=='undefined'&&CM==='auditoria')safeRender(CM);
+    try{const closed=await root.BurgerClosedDays.load(db),found=await root.BurgerIntegrationAudit.inspect(root.BurgerCashIntegration.state.rows,financeRaw.lancamentos,crypto,closed);if(generation!==auditGeneration)return;state.closedDays=closed;state.audit=found;state.auditStatus='ready';if(typeof CM!=='undefined'&&CM==='auditoria')safeRender(CM);if(typeof financeMaybeHealth==='function')financeMaybeHealth();}
+    catch(e){if(generation===auditGeneration){state.audit=[];state.auditStatus='error';state.message=String(e.message||e);if(typeof CM!=='undefined'&&CM==='auditoria')safeRender(CM);}}
+  }
+  function trigger(){dirty=true;urgent=true;lastRun=0;if(!running)schedule(100);}
+  function reconnect(){
+    configEpoch++;auditGeneration++;if(configUnsubscribe){try{configUnsubscribe();}catch(e){}configUnsubscribe=null;}
+    state.auditStatus='waiting';state.message='';watchConfig();trigger();
+  }
+  root.BurgerCashRunner={state,run,maybeStart,audit,trigger,reconnect};
+})(window);
+
+window.financeReconnectAll=function(){window.BurgerCashRunner.reconnect();window.BurgerCashIntegration.start();void loadAll();};
+
+
 // ── INIT ────────────────────────────────────────────────
 (async function(){
   // Limpa caches antigos pesados/corrompidos e evita renderizar milhares de lançamentos antes do Firebase responder.
@@ -5092,10 +5457,10 @@ window.bkOpenReceipts=function(){
 </script>
 
 <script type="application/json" id="financeiro-release">{
-  "build": "FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2",
+  "build": "FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1",
   "base": {
     "url": "https://github.com/marcelomreidogado-cmd/financeiro-burgerdorei/blob/main/index.html",
-    "sha256": "f2ee9153f02bffe9cb01bd9396fa6e6fc4937e0e80c3992ed6c4a77d01dde8dc"
+    "sha256": "93b7cbf475f95fd29a1bc39080bc9883f8810fbbfc2448870db371649c23b7c7"
   },
   "changelog": [
     "Transações para criação, alteração, baixa e exclusão financeira; conflitos exigem revisão.",
@@ -5120,7 +5485,8 @@ window.bkOpenReceipts=function(){
     "R7: importação local de extratos PDF Sicoob com conferência de saldos, separação de lançamentos futuros, prévia antes de gravar e proteção contra sobreposição; fornecedor e nota fiscal nos lançamentos, busca, CSV e edição em série.",
     "R8: botão Importar Excel ou PDF, com ambos os formatos disponíveis. Lançamentos exibe todos os registros filtrados do mês em lista contínua, sem paginação, com acesso por teclado e espaço abaixo da última linha.",
     "Consulta somente leitura do Caixa: totais mensais e diários de vendas e motoboy e comparação de iFood/99Food com créditos identificados nos extratos.",
-    "Conferência de backup somente de leitura; preserva a base atual e identifica divergências e possíveis duplicidades."
+    "Conferência de backup somente de leitura; preserva a base atual e identifica divergências e possíveis duplicidades.",
+    "Preparação de gravações coordenadas; geração automática permanece desativada."
   ],
   "limites": [
     "Clientes precisam usar esta versão; abas antigas podem continuar gravando pelas rotinas antigas.",
@@ -5128,7 +5494,8 @@ window.bkOpenReceipts=function(){
     "Auditoria interna não executa com todos os navegadores fechados.",
     "Gravação autorizada dos extratos foi confirmada em produção; regras não foram alteradas. Os testes de falha, concorrência e reconexão usaram somente o emulador.",
     "Esta etapa não cria lançamentos automáticos, não altera o DRE e não sincroniza dados de volta para o Caixa.",
-    "Recuperação aditiva ainda não está disponível; o backup anterior não contém extratos bancários nem os dados do Caixa."
+    "Recuperação aditiva ainda não está disponível; o backup anterior não contém extratos bancários nem os dados do Caixa.",
+    "O fechamento automático ainda não está ativo nesta versão."
   ],
   "publicacao": [
     "Publicação do index.html pelo fluxo do repositório para o Firebase Hosting.",
@@ -6767,6 +7134,13 @@ window.bkOpenReceipts=function(){
       "cobertura": [
         "Arquivo válido e inválido; divergências e possíveis duplicidades.",
         "Lançamentos existentes preservados e cache das versões compatíveis mantido."
+      ]
+    },
+    "cashStage": {
+      "escopo": "Prévia testada com dois navegadores e emuladores locais, sem gravação em produção.",
+      "cobertura": [
+        "Automação permanece desligada; consulta continua disponível.",
+        "Gravação manual coordenada, histórico e regras experimentais."
       ]
     }
   },
