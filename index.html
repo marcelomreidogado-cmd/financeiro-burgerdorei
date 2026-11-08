@@ -6,9 +6,9 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1">
+<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V1">
 <script>
-window.__BUILD_ID='FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1';
+window.__BUILD_ID='FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V1';
 (function(){
   try{
     if('serviceWorker' in navigator){
@@ -1429,7 +1429,7 @@ let fbOk = false;
 let unsubListeners = [];
 
 // Blindagem pós-resgate: evita re-render pesado enquanto o usuário clica/digita.
-const APP_VERSION = 'FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1';
+const APP_VERSION = 'FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V1';
 let renderTimer = null;
 let pendingRender = null;
 function modalAberto(){
@@ -1478,7 +1478,7 @@ function initFirebase(){
 // ── Fallback localStorage ──────────────────────────────
 const LS_KEY = 'bdr_data_v2_light';
 const LS_VER_KEY = 'bdr_build_version';
-try{ const previous=localStorage.getItem(LS_VER_KEY); if(previous!==APP_VERSION){ if(!['FINANCEIRO_BURGER_2026_10_20_R8','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2'].includes(previous))localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
+try{ const previous=localStorage.getItem(LS_VER_KEY); if(previous!==APP_VERSION){ if(!['FINANCEIRO_BURGER_2026_10_20_R8','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2','FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1'].includes(previous))localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
 // Não limpa caches antigos a cada abertura; evita trabalho desnecessário no Chrome local.
 // try{ localStorage.removeItem('bdr_data_v1'); }catch(e){}
 // try{ localStorage.removeItem('bdr_data_v2'); }catch(e){}
@@ -4954,12 +4954,12 @@ window.bkOpenReceipts=function(){
       return cells([month(m),canDisplay?money(p.salesCents):'A conferir',canDisplay?money(p.motoboyCents):'A conferir',p.existing.sales.length?'Conferir registro':p.closed?'Não identificado':'Em andamento',p.existing.motoboy.length?'Conferir registro':p.closed?'Não identificado':'Em andamento',status]);
     });
     const dates=[...new Set(pending)].sort();
-    const actions=dates.length?'<p>Dias sem movimento confirmado: '+dates.map(d=>esc(date(d))).join(', ')+'.</p>':'';
+    const actions=dates.length?'<h3>Dias a confirmar</h3><p>Confirme apenas os dias em que a loja ficou fechada.</p>'+dates.map(d=>'<div>'+esc(date(d))+' <button data-cash-confirm-day="'+esc(d)+'">Confirmar loja fechada</button></div>').join(''):'';
     const pendingRunner=root.BurgerCashRunner?.state;
     const problems=(pendingRunner?.months||[]).filter(m=>m.status==='pending');
     const runnerNotice=pendingRunner?.status==='pending'?'<p>Fechamento pendente: '+esc(pendingRunner.message||problems.map(m=>m.month+': '+m.message).join('; ')||'confira a conexão.')+'</p>':'';
     const daily=BurgerCashModel.dailyCash(state.rows).filter(r=>(!from||r.date.slice(0,7)>=from)&&(!to||r.date.slice(0,7)<=to)).map(r=>cells([date(r.date),r.sales===null?'A conferir':money(r.sales),r.motoboy===null?'A conferir':money(r.motoboy),r.valid?'Registrado':'Verificar dados']));
-    return '<section class="bk-panel"><h2>Prévia de fechamento do caixa</h2><p>Os valores são somados a partir dos dias registrados no Caixa. Meses incompletos aparecem como parciais. O fechamento automático ainda está em preparação e não cria lançamentos nesta versão.</p>'+runnerNotice+table(['Mês','Vendas no caixa','Motoboy no caixa','Vendas no Financeiro','Motoboy no Financeiro','Situação'],rows)+actions+'</section><section class="bk-panel"><details><summary>Ver vendas e motoboy por dia</summary>'+table(['Dia','Vendas registradas','Motoboy registrado','Situação'],daily)+'</details></section>';
+    return '<section class="bk-panel"><h2>Prévia de fechamento do caixa</h2><p>Os valores são somados a partir dos dias registrados no Caixa. Meses incompletos aparecem como parciais. Após o fim do mês, o fechamento é conferido no próximo acesso ao Financeiro.</p>'+runnerNotice+table(['Mês','Vendas no caixa','Motoboy no caixa','Vendas no Financeiro','Motoboy no Financeiro','Situação'],rows)+actions+'</section><section class="bk-panel"><details><summary>Ver vendas e motoboy por dia</summary>'+table(['Dia','Vendas registradas','Motoboy registrado','Situação'],daily)+'</details></section>';
   }
   function bindPreview(container){
     container.querySelectorAll('[data-cash-confirm-day]').forEach(btn=>{btn.onclick=()=>{const d=btn.dataset.cashConfirmDay;if(!/^\d{4}-\d{2}-\d{2}$/.test(d||''))return;
@@ -5270,6 +5270,14 @@ window.bkOpenReceipts=function(){
     const beforeRevision=await root.BurgerCashCoordination.readRevision(finance);let acquired=false;
     try{
       await root.BurgerCashCoordination.acquire(source,month,owner,serverTimestamp);acquired=true;
+      const lockNow=await source.collection('caixa_integracao_locks').doc(month).get({source:'server'});
+      const timestamp=lockNow.exists&&lockNow.data().owner===owner&&lockNow.data().active?lockNow.data().updated_at:null;
+      const serverDate=timestamp&&typeof timestamp.toDate==='function'?timestamp.toDate():null;
+      if(!(serverDate instanceof Date)||!Number.isFinite(serverDate.valueOf()))throw Error('Não foi possível confirmar a data do servidor.');
+      const parts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit'}).formatToParts(serverDate).map(p=>[p.type,p.value]));
+      const serverMonth=parts.year+'-'+parts.month;
+      if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(serverMonth))throw Error('Data do servidor inválida.');
+      if(month>=serverMonth)return {status:'review-or-existing',plan:{...initial,closed:false,issues:[...initial.issues,'O mês ainda não terminou no servidor.'],proposals:[]}};
       const revision=await root.BurgerCashCoordination.begin(finance,month,beforeRevision);
       [cash,ledger]=await Promise.all([readRows(source,'caixa'),readRows(finance,'lancamentos')]);
       const plan=check(cash,ledger);
@@ -5353,7 +5361,6 @@ window.bkOpenReceipts=function(){
   function refresh(){if(typeof CM!=='undefined'&&CM==='extratos'&&root.BurgerBankUI?.state.tab==='cashPreview')root.BurgerBankUI.render();}
   function ready(){return !!(root.BurgerCashIntegration?.state.status==='ready'&&root.BurgerCashIntegration.state.sourceDb&&financeSync.collections.lancamentos?.confirmed&&!financeSync.collections.lancamentos?.cached&&!financeSync.collections.lancamentos?.error&&navigator.onLine!==false);}
   function schedule(delay=1000){
-    if(!root.__CASH_E2E_TEST__)return;
     const at=Date.now()+delay;if(timer!==null&&timerAt<=at)return;
     if(timer!==null)clearTimeout(timer);
     timerAt=at;timer=setTimeout(()=>{timer=null;timerAt=0;void run();},delay);
@@ -5366,7 +5373,6 @@ window.bkOpenReceipts=function(){
     await root.BurgerCashCoordination.recover(db,source,month,()=>firebase.firestore.FieldValue.serverTimestamp());
   }
   async function run(){
-    if(!root.__CASH_E2E_TEST__)return;
     if(running){dirty=true;return;}
     if(!ready()){schedule(5000);return;}
     dirty=false;urgent=false;running=true;state.status='running';state.months=[];refresh();
@@ -5387,7 +5393,7 @@ window.bkOpenReceipts=function(){
     finally{running=false;refresh();if(dirty&&urgent)schedule(100);else if(state.status==='pending')schedule(60000);else if(dirty)schedule(Math.max(100,60000-(Date.now()-lastRun)));}
   }
   function watchConfig(){
-    if(configUnsubscribe||!db||!root.__CASH_E2E_TEST__)return;
+    if(configUnsubscribe||!db)return;
     const epoch=++configEpoch;
     configUnsubscribe=db.collection('caixa_fechamento_config').doc('main').onSnapshot({includeMetadataChanges:true},snap=>{
       if(epoch!==configEpoch)return;
@@ -5457,10 +5463,10 @@ window.financeReconnectAll=function(){window.BurgerCashRunner.reconnect();window
 </script>
 
 <script type="application/json" id="financeiro-release">{
-  "build": "FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1",
+  "build": "FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V1",
   "base": {
     "url": "https://github.com/marcelomreidogado-cmd/financeiro-burgerdorei/blob/main/index.html",
-    "sha256": "93b7cbf475f95fd29a1bc39080bc9883f8810fbbfc2448870db371649c23b7c7"
+    "sha256": "c03465e3f9aa1db85ed6c4f74001a65448ae2e660c68f51672f5bc40823edee0"
   },
   "changelog": [
     "Transações para criação, alteração, baixa e exclusão financeira; conflitos exigem revisão.",
@@ -5486,16 +5492,15 @@ window.financeReconnectAll=function(){window.BurgerCashRunner.reconnect();window
     "R8: botão Importar Excel ou PDF, com ambos os formatos disponíveis. Lançamentos exibe todos os registros filtrados do mês em lista contínua, sem paginação, com acesso por teclado e espaço abaixo da última linha.",
     "Consulta somente leitura do Caixa: totais mensais e diários de vendas e motoboy e comparação de iFood/99Food com créditos identificados nos extratos.",
     "Conferência de backup somente de leitura; preserva a base atual e identifica divergências e possíveis duplicidades.",
-    "Preparação de gravações coordenadas; geração automática permanece desativada."
+    "Apuração mensal de vendas e motoboy do Caixa, com preservação de lançamentos existentes e auditoria de alterações posteriores."
   ],
   "limites": [
     "Clientes precisam usar esta versão; abas antigas podem continuar gravando pelas rotinas antigas.",
     "Não é possível recuperar informações antigas nunca gravadas e sem metadados.",
     "Auditoria interna não executa com todos os navegadores fechados.",
-    "Gravação autorizada dos extratos foi confirmada em produção; regras não foram alteradas. Os testes de falha, concorrência e reconexão usaram somente o emulador.",
-    "Esta etapa não cria lançamentos automáticos, não altera o DRE e não sincroniza dados de volta para o Caixa.",
+    "Na versão R8, a gravação autorizada dos extratos foi confirmada em produção; as regras então vigentes não haviam sido alteradas. Os testes de falha, concorrência e reconexão usaram somente o emulador.",
     "Recuperação aditiva ainda não está disponível; o backup anterior não contém extratos bancários nem os dados do Caixa.",
-    "O fechamento automático ainda não está ativo nesta versão."
+    "Fechamentos incompletos ou com registros existentes são encaminhados para conferência; alterações posteriores no Caixa são sinalizadas na Auditoria."
   ],
   "publicacao": [
     "Publicação do index.html pelo fluxo do repositório para o Firebase Hosting.",
@@ -7136,11 +7141,12 @@ window.financeReconnectAll=function(){window.BurgerCashRunner.reconnect();window
         "Lançamentos existentes preservados e cache das versões compatíveis mantido."
       ]
     },
-    "cashStage": {
-      "escopo": "Prévia testada com dois navegadores e emuladores locais, sem gravação em produção.",
+    "cashAutomation": {
+      "escopo": "Testes isolados em dois emuladores e navegador, sem escrita de teste em produção.",
       "cobertura": [
-        "Automação permanece desligada; consulta continua disponível.",
-        "Gravação manual coordenada, histórico e regras experimentais."
+        "Duas abas, recarga, histórico preservado e identificação por centro de custo.",
+        "DRE, fluxo de caixa, confirmação de dia fechado e divergência após fechamento.",
+        "Mudança, ausência e duplicidade no plano de contas; compatibilidade de outras coleções do projeto compartilhado."
       ]
     }
   },
