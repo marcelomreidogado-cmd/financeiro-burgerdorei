@@ -6,9 +6,9 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V2">
+<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_11_09_AGENDA_GUARD_V1">
 <script>
-window.__BUILD_ID='FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V2';
+window.__BUILD_ID='FINANCEIRO_BURGER_2026_11_09_AGENDA_GUARD_V1';
 (function(){
   try{
     if('serviceWorker' in navigator){
@@ -1429,7 +1429,7 @@ let fbOk = false;
 let unsubListeners = [];
 
 // Blindagem pós-resgate: evita re-render pesado enquanto o usuário clica/digita.
-const APP_VERSION = 'FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V2';
+const APP_VERSION = 'FINANCEIRO_BURGER_2026_11_09_AGENDA_GUARD_V1';
 let renderTimer = null;
 let pendingRender = null;
 function modalAberto(){
@@ -1478,7 +1478,7 @@ function initFirebase(){
 // ── Fallback localStorage ──────────────────────────────
 const LS_KEY = 'bdr_data_v2_light';
 const LS_VER_KEY = 'bdr_build_version';
-try{ const previous=localStorage.getItem(LS_VER_KEY); if(previous!==APP_VERSION){ if(!['FINANCEIRO_BURGER_2026_10_20_R8','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2','FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V1'].includes(previous))localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
+try{ const previous=localStorage.getItem(LS_VER_KEY); if(previous!==APP_VERSION){ if(!['FINANCEIRO_BURGER_2026_10_20_R8','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2','FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V2'].includes(previous))localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
 // Não limpa caches antigos a cada abertura; evita trabalho desnecessário no Chrome local.
 // try{ localStorage.removeItem('bdr_data_v1'); }catch(e){}
 // try{ localStorage.removeItem('bdr_data_v2'); }catch(e){}
@@ -1617,9 +1617,14 @@ async function finUpdateMany(changes){
       if(!actual||actual._deleted)throw new Error('Registro removido em outro computador. Reabra a tela.');
       if(!c.expected||finVersion(actual)!==finVersion(c.expected))throw new Error('Este registro mudou em outro computador. Reabra para revisar os valores atuais.');
     });
+    changes.forEach((c,i)=>{
+      if(c.col!=='agenda_financeira')return;
+      const old=snaps[i].data(),next={...old,...finClean(c.patch)};
+      if(agManualKey(old)!==agManualKey(next)||lancMoneyKey(old.valor)!==lancMoneyKey(next.valor))throw new Error('Para alterar data, origem ou valor, use Editar recebimento na Agenda.');
+    });
     const before=changes.flatMap((c,i)=>c.col==='lancamentos'?[{...snaps[i].data(),id:c.id}]:[]);
     const after=changes.flatMap((c,i)=>c.col==='lancamentos'?[{...snaps[i].data(),...finClean(c.patch),id:c.id}]:[]);
-    const mark=await BurgerManualGuard.prepare(db,tx,after,before);
+    const mark=await BurgerManualGuard.prepare(db,tx,after,before,changes.some(c=>c.col==='agenda_financeira'||c.col==='lancamentos'));
     changes.forEach((c,i)=>tx.update(refs[i],{...finClean(c.patch),_rev:(snaps[i].data()._rev||0)+1,updated_at:firebase.firestore.FieldValue.serverTimestamp()}));
     mark();
     return true;
@@ -1664,7 +1669,7 @@ async function lancPersistMany(items,options={}){
     const refs=rows.map(r=>db.collection('lancamentos').doc(r.id));
     const snaps=await Promise.all(refs.map(r=>tx.get(r)));
     if(snaps.some(s=>s.exists))throw new Error('Esta operação já foi registrada ou excluída. Confira os lançamentos antes de repetir.');
-    const mark=await BurgerManualGuard.prepare(db,tx,rows);
+    const mark=await BurgerManualGuard.prepare(db,tx,rows,[],true);
     rows.forEach((r,i)=>tx.set(refs[i],{...finClean(r),updated_at:firebase.firestore.FieldValue.serverTimestamp()}));
     mark();
   });
@@ -2287,7 +2292,7 @@ async function lancSaveSeriesEdit(context,data,scope='all'){
     for(let i=0;i<snaps.length;i++)if(!snaps[i].exists||finVersion(snaps[i].data())!==finVersion(context.rows[i]))throw Error('Outro computador alterou esta série. Feche e reabra a edição para conferir os valores atuais.');
     const actual=new Map(snaps.map((snap,i)=>[context.rows[i].id,snap]));
     const before=context.rows.map(r=>({...r})),after=context.rows.map(r=>({...r,...(updates.find(u=>u.id===r.id)?.patch||{})}));
-    const mark=await BurgerManualGuard.prepare(db,tx,after,before);
+    const mark=await BurgerManualGuard.prepare(db,tx,after,before,true);
     for(const change of updates){const snap=actual.get(change.id);tx.update(snap.ref,{...finClean(change.patch),_rev:(snap.data()._rev||0)+1,updated_at:firebase.firestore.FieldValue.serverTimestamp()});}
     mark();
   });
@@ -3017,12 +3022,19 @@ function ccSortStore(){
   });
 }
 async function ccPersistRefs(changedLanc,changedAgenda){
+  const changes=[...changedLanc.filter(r=>r.id).map(r=>({col:'lancamentos',id:r.id,patch:r})),...changedAgenda.filter(r=>r.id).map(r=>({col:'agenda_financeira',id:r.id,patch:r}))];
+  let saved=0;
   try{
-    const jobs=[];
-    changedLanc.forEach(r=>{if(r.id)jobs.push(fbSet('lancamentos',r.id,{...r}));});
-    changedAgenda.forEach(r=>{if(r.id)jobs.push(fbSet('agenda_financeira',r.id,{...r}));});
-    for(let i=0;i<jobs.length;i+=80){await Promise.all(jobs.slice(i,i+80));}
-  }catch(e){console.warn('Falha ao atualizar referências do plano de contas:',e);}
+    for(let i=0;i<changes.length;i+=100){
+      const chunk=changes.slice(i,i+100).map(c=>({...c,expected:finExpected(c.col,c.id)}));
+      await finUpdateMany(chunk);saved+=chunk.length;
+    }
+    return true;
+  }catch(e){
+    console.warn('Falha ao atualizar referências do plano de contas:',e);
+    toast('O plano foi alterado, mas '+(changes.length-saved)+' vínculo(s) não foram atualizados. Recarregue e confira os lançamentos antes de continuar.','er');
+    return false;
+  }
 }
 async function ccRenameRefs(oldCat,newCat,oldSub=null,newSub=null,ids={}){
   const groupId=ids.groupId||''; const subId=ids.subId||'';
@@ -3038,7 +3050,7 @@ async function ccRenameRefs(oldCat,newCat,oldSub=null,newSub=null,ids={}){
   };
   (store.lancamentos||[]).forEach(r=>apply(r,changedLanc));
   (store.agenda||[]).forEach(r=>apply(r,changedAgenda));
-  await ccPersistRefs(changedLanc,changedAgenda);
+  return ccPersistRefs(changedLanc,changedAgenda);
 }
 function rCC(){
   ccEnsureIds(); store.centrocusto=store.centrocusto||[]; ccSortStore();
@@ -3149,8 +3161,8 @@ window.svCCGroup=async function(oldId){
   const rows=ccRows(oldGroup.id); const oldCat=oldGroup.nome;
   rows.forEach(r=>{r.categoria=nome;r.grupo_id=oldGroup.id;r.categoria_id=oldGroup.id;r.dre_id=dreId;});
   ccSortStore(); lsSave();
-  try{for(const r of rows){if(r.id)await fbSet('centrocusto',r.id,{...r});}}catch(e){console.warn(e);toast('Alteração salva localmente. Falha ao sincronizar agora.','in');}
-  if(nome!==oldCat) await ccRenameRefs(oldCat,nome,null,null,{groupId:oldGroup.id});
+  try{for(const r of rows){if(r.id)await fbSet('centrocusto',r.id,{...r});}}catch(e){console.warn(e);toast('Não foi possível confirmar todo o grupo. Recarregue e confira o plano de contas.','er');return;}
+  if(nome!==oldCat&&!await ccRenameRefs(oldCat,nome,null,null,{groupId:oldGroup.id}))return;
   ccSel=oldGroup.id;toast('Grupo atualizado sem quebrar IDs!','ok');cM();rCC();
 };
 window.dCCGroup=async function(id){
@@ -3181,8 +3193,8 @@ window.svCC=async function(idx){
     const oldCat=item.categoria, oldSub=item.subcategoria||'', oldGroupId=ccRowGroupId(item)||g.id, oldSubId=ccRowSubId(item)||ccHashId('sub_',g.id+'|'+ccNorm(oldSub));
     store.centrocusto[idx]={...item,grupo_id:g.id,categoria_id:g.id,categoria:g.nome,subcategoria_id:oldSubId,subcategoria:subNome,status,grupo:'',dre_id:dreId};
     ccSortStore(); lsSave();
-    try{if(item.id){const savedRow=store.centrocusto.find(x=>ccRowSubId(x)===oldSubId)||store.centrocusto[idx];await fbSet('centrocusto',item.id,{...savedRow});}}catch(e){console.warn('Falha ao salvar subcategoria:',e);toast('Salvo localmente. Verifique conexão para sincronizar.','in');}
-    if(oldCat!==g.nome || oldSub!==subNome || oldGroupId!==g.id) await ccRenameRefs(oldCat,g.nome,oldSub,subNome,{groupId:oldGroupId||g.id,subId:oldSubId});
+    try{if(item.id){const savedRow=store.centrocusto.find(x=>ccRowSubId(x)===oldSubId)||store.centrocusto[idx];await fbSet('centrocusto',item.id,{...savedRow});}}catch(e){console.warn('Falha ao salvar subcategoria:',e);toast('Não foi possível confirmar a subcategoria. Recarregue e confira o plano de contas.','er');return;}
+    if((oldCat!==g.nome || oldSub!==subNome || oldGroupId!==g.id)&&!await ccRenameRefs(oldCat,g.nome,oldSub,subNome,{groupId:oldGroupId||g.id,subId:oldSubId}))return;
   }else{
     const sid=ccNewId('sub_');
     const nid=ccNewId('cc_');
@@ -3431,7 +3443,7 @@ async function lancRepairManagedSeries(gid){
     const snaps=await Promise.all(refs.map(ref=>tx.get(ref)));
     if(!seed.exists||finVersion(seed.data())!==finVersion(anchor))throw new Error('Série alterada em outro computador. Reanalise.');
     const newRows=candidates.filter((r,i)=>!snaps[i].exists);
-    const mark=await BurgerManualGuard.prepare(db,tx,newRows);
+    const mark=await BurgerManualGuard.prepare(db,tx,newRows,[],true);
     if(snaps.some(s=>!s.exists))tx.update(seedRef,{_rev:(seed.data()._rev||0)+1,updated_at:firebase.firestore.FieldValue.serverTimestamp()});
     candidates.forEach((r,i)=>{if(!snaps[i].exists)tx.set(refs[i],{...finClean(r),status:'Pendente',data_efetivacao:null,_rev:1,updated_at:firebase.firestore.FieldValue.serverTimestamp()});});
     mark();
@@ -3730,6 +3742,19 @@ function agUnificarItensVisiveis(items){
   return [...agRecebimentosUnicos(items.filter(x=>x.source!=='lancamento'&&x.source!=='extrato'&&x.tipo!=='pagar')), ...items.filter(x=>x.source==='extrato'), ...items.filter(x=>x.source==='lancamento'||x.tipo==='pagar')].sort(agSort);
 }
 function agSnapshotRows(key){return (financeRaw.agenda_financeira||[]).filter(r=>agManualKey(r)===key);}
+async function agReadServerRows(){
+  const guard=db.collection('caixa_fechamento_guards').doc('global');
+  const first=await guard.get({source:'server'});
+  const agendaSnap=await db.collection('agenda_financeira').get({source:'server'});
+  const bankSnap=await db.collection('extratos_bancarios').get({source:'server'});
+  const last=await guard.get({source:'server'});
+  if([first,agendaSnap,bankSnap,last].some(s=>s.metadata.fromCache||s.metadata.hasPendingWrites))throw Error('Aguardando confirmação do servidor antes de conferir a Agenda.');
+  const rows=agendaSnap.docs.map(d=>({...d.data(),id:d.id}));
+  const banks=bankSnap.docs.map(d=>({...d.data(),id:d.id}));
+  const version=s=>s.exists?s.data().revision:null;
+  if(version(first)!==version(last))throw new Error('A Agenda mudou durante a conferência. Atualize e tente novamente.');
+  return {rows,banks,revision:version(last)};
+}
 async function agPersistUniqueManual(raw,oldId='',expected=null){
   finAssertReady(['agenda_financeira','extratos_bancarios']);
   bkAssertManualDate(raw);
@@ -3739,14 +3764,29 @@ async function agPersistUniqueManual(raw,oldId='',expected=null){
   const old=oldId?(expected||finExpected('agenda_financeira',oldId)):null;
   if(oldId&&!old)throw new Error('Registro não encontrado. Reabra a Agenda.');
   const oldKey=old?agManualKey(old):key;
-  const known=[...agSnapshotRows(key),...agSnapshotRows(oldKey)];
+  const server=await agReadServerRows();
+  for(const bank of server.banks.filter(d=>!d._deleted&&d.month===item.data.slice(0,7))){
+    if(!Array.isArray(bank.receipts?.rows)||bank.receipts.rows.some(r=>!finValidDate(r.date)||!r.origin||!Number.isSafeInteger(r.cents)||r.cents<=0))throw new Error('Extrato indisponível para conferência. Atualize antes de salvar.');
+    if(bank.receipts.rows.some(r=>r.date+'|'+agSlug(r.origin)===key))throw new Error('Recebimento já incluído pelo extrato bancário. Confira antes de salvar.');
+  }
+  const known=server.rows.filter(r=>[key,oldKey].includes(agManualKey(r)));
   const ids=[...new Set([stableId,agCanonicalIdFromKey(oldKey),...known.map(r=>r.id),...(oldId?[oldId]:[])])];
   if(ids.length>200)throw new Error('Muitas cópias antigas desta origem. Consulte a auditoria antes de editar.');
   await finTransaction(async tx=>{
     const refs=ids.map(id=>db.collection('agenda_financeira').doc(id));
     const snaps=await Promise.all(refs.map(r=>tx.get(r)));
+    const bank=await tx.get(db.collection('extratos_bancarios').doc('sicoob-principal_'+item.data.slice(0,7)));
+    const guard=await tx.get(db.collection('caixa_fechamento_guards').doc('global'));
+    if((guard.exists?guard.data().revision:null)!==server.revision)throw new Error('A Agenda mudou durante a conferência. Atualize e tente novamente.');
+    const mark=await BurgerManualGuard.prepareBarrier(db,tx);
+    if(bank.exists&&!bank.data()._deleted){
+      if(!Array.isArray(bank.data().receipts?.rows)||bank.data().receipts.rows.some(r=>!finValidDate(r.date)||!r.origin||!Number.isSafeInteger(r.cents)||r.cents<=0))throw new Error('Extrato indisponível para conferência. Atualize antes de salvar.');
+      if(bank.data().receipts.rows.some(r=>r.date+'|'+agSlug(r.origin)===key))throw new Error('Recebimento já incluído pelo extrato bancário. Confira antes de salvar.');
+    }
     const actual=snaps.map((s,i)=>s.exists?{...s.data(),id:ids[i]}:null).filter(Boolean);
     const current=agCanonicalRows(actual).find(r=>agManualKey(r)===key);
+    for(const k of new Set([key,oldKey]))if(actual.filter(r=>!r._deleted&&agManualKey(r)===k).length>1)throw new Error('Há recebimentos antigos repetidos nesta data e origem. Confira na Auditoria antes de alterar.');
+    if(!old&&!current&&actual.some(r=>!r._deleted&&agManualKey(r)===key))throw new Error('Há histórico de recebimento nesta data e origem. Confira na Auditoria antes de alterar.');
     if(old){
       const currentOld=actual.find(r=>r.id===oldId);
       if(!currentOld||currentOld._deleted||finVersion(currentOld)!==finVersion(old))throw new Error('Recebimento alterado em outro computador. Reabra para conferir antes de salvar.');
@@ -3772,18 +3812,28 @@ async function agPersistUniqueManual(raw,oldId='',expected=null){
     }
     const target=actual.find(r=>r.id===stableId);
     tx.set(db.collection('agenda_financeira').doc(stableId),{...finClean(item),_deleted:false,_integrity:1,_rev:(target?._rev||0)+1,manual_key:key,criado_em:old?.criado_em||new Date().toISOString(),updated_at:now});
+    mark();
   });
   return {...item,id:stableId};
 }
 async function agDeleteReceipts(items){
   finAssertReady(['agenda_financeira']);
-  const captured=items.map(item=>({item:{...item},key:agManualKey(item),rows:agSnapshotRows(agManualKey(item)).map(r=>({...r}))}));
+  const server=await agReadServerRows();
+  const captured=items.map(item=>({item:{...item},key:agManualKey(item),rows:server.rows.filter(r=>agManualKey(r)===agManualKey(item)).map(r=>({...r}))}));
+  for(const c of captured){
+    const local=agSnapshotRows(c.key);
+    const sig=rows=>rows.map(r=>r.id+'|'+finVersion(r)).sort().join('\n');
+    if(sig(local)!==sig(c.rows))throw new Error('A Agenda mudou em outro computador. Atualize antes de excluir.');
+  }
   for(const c of captured){const current=agCanonicalRows(c.rows).find(r=>agManualKey(r)===c.key);if(!current||finVersion(current)!==finVersion(c.item))throw new Error('Recebimento alterado. Reanalise antes de excluir.');}
   const ids=[...new Set(captured.flatMap(c=>[agCanonicalIdFromKey(c.key),...c.rows.map(r=>r.id)]))];
   if(ids.length>200)throw new Error('Selecione até 200 registros por vez.');
   await finTransaction(async tx=>{
     const refs=ids.map(id=>db.collection('agenda_financeira').doc(id));
     const snaps=await Promise.all(refs.map(r=>tx.get(r)));
+    const guard=await tx.get(db.collection('caixa_fechamento_guards').doc('global'));
+    if((guard.exists?guard.data().revision:null)!==server.revision)throw new Error('A Agenda mudou durante a conferência. Atualize e tente novamente.');
+    const mark=await BurgerManualGuard.prepareBarrier(db,tx);
     const actual=snaps.map((s,i)=>s.exists?{...s.data(),id:ids[i]}:null);
     for(const c of captured){
       for(const id of [agCanonicalIdFromKey(c.key),...c.rows.map(r=>r.id)]){
@@ -3794,6 +3844,7 @@ async function agDeleteReceipts(items){
     const stamp=firebase.firestore.FieldValue.serverTimestamp();
     captured.forEach(c=>tx.set(db.collection('agenda_financeira').doc(agCanonicalIdFromKey(c.key)),{...finClean(c.item),_deleted:true,_rev:(c.item._rev||0)+1,deleted_at:new Date().toISOString(),updated_at:stamp},{merge:true}));
     actual.forEach((r,i)=>{if(r&&!r._deleted)tx.update(refs[i],{_deleted:true,deleted_at:new Date().toISOString(),updated_at:stamp});});
+    mark();
   });
 }
 function agUniqueReceiptKey(r){return agManualKey(r);}
@@ -4554,11 +4605,17 @@ window.render=function(m){
     const accounts=batch.map(s=>s.account).filter(a=>a?.key);
     if(new Set(accounts.map(a=>a.key)).size>1)throw Error('Selecione extratos de uma única conta.');
     const run=runner||((fn)=>db.runTransaction(fn));
+    const inventory=await agReadServerRows();
+    for(const statement of batch){
+      if(inventory.banks.some(d=>!d._deleted&&d.month===statement.month&&d.id!=='sicoob-principal_'+statement.month&&(d.statement||d.receipts)))throw Error('Há outro extrato para este mês. Confira as fontes antes de importar.');
+    }
     return run(async tx=>{
       const refs=batch.map(s=>db.collection(COLLECTION).doc('sicoob-principal_'+s.month));
       const docs=await Promise.all(refs.map(ref=>tx.get(ref)));
       const accountRef=db.collection(COLLECTION).doc('sicoob-principal_account');
       const accountDoc=accounts.length?await tx.get(accountRef):null;
+      const control=await tx.get(db.collection('caixa_fechamento_guards').doc('global'));
+      if((control.exists?control.data().revision:null)!==inventory.revision)throw Error('A Agenda ou os extratos mudaram durante a conferência. Tente importar novamente.');
       const mark=await BurgerManualGuard.prepareBarrier(db,tx);
       if(accountDoc?.exists&&accountDoc.data().account?.key!==accounts[0].key)throw Error('A conta do PDF difere da conta vinculada ao Burger. Nenhum movimento foi gravado.');
       let created=0,updated=0,duplicates=statements.length-batch.length;const merged=[];
@@ -4566,14 +4623,38 @@ window.render=function(m){
         const old=docs[i].exists?docs[i].data():null;if(old?._deleted)throw Error('Extrato arquivado. Confira o histórico antes de importar novamente.');
         const statement=await BurgerBankCore.mergeStatement(old?.statement||null,batch[i]);
         if(new TextEncoder().encode(JSON.stringify(statement)).length>800000)throw Error('Mês excede o limite de armazenamento; reduza os arquivos repetidos.');
-        merged.push({old,statement,receipts:BurgerBankCore.receipts(statement,policy)});
+        for(const field of ['receiptOverrides','receiptOverrideKeys']){
+          const data=old?.[field];
+          if(data!==undefined&&(data===null||typeof data!=='object'||Array.isArray(data)))throw Error('Este extrato contém classificações que precisam ser preservadas. Confira antes de atualizar.');
+        }
+        const hasClassifications=['receiptOverrides','receiptOverrideKeys'].some(field=>Object.keys(old?.[field]||{}).length);
+        if(hasClassifications){
+          if(!Array.isArray(old.receipts?.rows)||old.receipts.rows.some(r=>!finValidDate(r.date)||!r.origin||!Number.isSafeInteger(r.cents)||r.cents<=0))throw Error('Extrato salvo sem recebimentos confiáveis. Confira antes de atualizar.');
+          if(old.contentHash===statement.id&&old.receipts.policy===policy){merged.push({old,statement,receipts:old.receipts});continue;}
+          throw Error('Este extrato contém classificações que precisam ser preservadas. Confira antes de atualizar.');
+        }
+        const receipts=BurgerBankCore.receipts(statement,policy);
+        if(old&&(!Array.isArray(old.receipts?.rows)||old.receipts.rows.some(r=>!finValidDate(r.date)||!r.origin||!Number.isSafeInteger(r.cents)||r.cents<=0)))throw Error('Extrato salvo sem recebimentos confiáveis. Confira antes de atualizar.');
+        const previous=new Map((old?.receipts?.rows||[]).map(r=>[r.date+'|'+agSlug(r.origin),r]));
+        for(const r of receipts.rows){
+          const key=r.date+'|'+agSlug(r.origin),before=previous.get(key);
+          const changed=!before||before.cents!==r.cents||before.count!==r.count;
+          if(changed&&inventory.rows.some(manual=>{
+            if(manual._deleted||(manual.tipo||'receber')==='pagar')return false;
+            const amount=Number(manual.valor);if(Number.isFinite(amount)&&amount<=0)return false;
+            const date=agDateKey(manual.data||manual.data_recebimento||manual.data_vencimento||manual.dt);
+            return !finValidDate(date)||(date===r.date&&!agCanonOrigem(manual));
+          }))throw Error('Há recebimento manual sem data ou origem identificável. Confira a Agenda antes de importar.');
+          if(changed&&!before&&inventory.rows.some(manual=>!manual._deleted&&agManualKey(manual)===key))throw Error('Há recebimento manual na mesma data e origem do extrato. Confira a Agenda antes de importar.');
+        }
+        merged.push({old,statement,receipts});
       }
       const accountCreated=!!(accounts.length&&!accountDoc.exists);
       if(accountCreated)tx.set(accountRef,{kind:'account',account:accounts[0],created_at:timestamp()});
       merged.forEach(({old,statement,receipts},i)=>{
         if(old&&old.contentHash===statement.id&&old.receipts?.policy===policy){duplicates++;return;}
         const now=timestamp();
-        tx.set(refs[i],{schemaVersion:2,accountId:'sicoob-principal',month:statement.month,contentHash:statement.id,statement,receipts,created_at:old?.created_at||now,updated_at:now,_rev:(old?._rev||0)+1});
+        tx.set(refs[i],{...(old||{}),schemaVersion:2,accountId:'sicoob-principal',month:statement.month,contentHash:statement.id,statement,receipts,created_at:old?.created_at||now,updated_at:now,_rev:(old?._rev||0)+1});
         if(old)updated++;else created++;
       });
       if(created||updated||accountCreated)mark();
@@ -5092,9 +5173,9 @@ window.bkOpenReceipts=function(){
     }
     return [...items.values()].sort((a,b)=>a.month.localeCompare(b.month)||a.kind.localeCompare(b.kind));
   }
-  async function prepare(db,tx,rows,oldRows=[]){
+  async function prepare(db,tx,rows,oldRows=[],forceBarrier=false){
     const before=new Map(oldRows.filter(r=>r?.id).map(r=>[r.id,r]));
-    const entries=affected([...oldRows,...rows]),months=[...new Set(entries.map(e=>e.month))];if(!months.length)return ()=>{};
+    const entries=affected([...oldRows,...rows]),months=[...new Set(entries.map(e=>e.month))];if(!months.length)return forceBarrier?await prepareBarrier(db,tx):()=>{};
     const entering=new Map();
     for(const row of rows){if(row._deleted)continue;const original=before.get(row.id),oldKeys=new Set(affected(original&&!original._deleted?[original]:[]).map(e=>e.month+'|'+e.kind));
       for(const e of affected([row]))if(!oldKeys.has(e.month+'|'+e.kind)&&row.id!=='caixa_fechamento_'+e.month+'_'+e.kind)entering.set(e.month+'|'+e.kind,e);
@@ -5463,10 +5544,10 @@ window.financeReconnectAll=function(){window.BurgerCashRunner.reconnect();window
 </script>
 
 <script type="application/json" id="financeiro-release">{
-  "build": "FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V2",
+  "build": "FINANCEIRO_BURGER_2026_11_09_AGENDA_GUARD_V1",
   "base": {
     "url": "https://github.com/marcelomreidogado-cmd/financeiro-burgerdorei/blob/main/index.html",
-    "sha256": "350ca63d768372ac581f3b48e588a7aa9149d8edc24c34a121cebea1c6ff855c"
+    "sha256": "1cfd14e3130d970e28f27c6aafc7a1a5b642648b83ee62343e52c16c9da5bc17"
   },
   "changelog": [
     "Transações para criação, alteração, baixa e exclusão financeira; conflitos exigem revisão.",
@@ -5492,10 +5573,12 @@ window.financeReconnectAll=function(){window.BurgerCashRunner.reconnect();window
     "R8: botão Importar Excel ou PDF, com ambos os formatos disponíveis. Lançamentos exibe todos os registros filtrados do mês em lista contínua, sem paginação, com acesso por teclado e espaço abaixo da última linha.",
     "Consulta somente leitura do Caixa: totais mensais e diários de vendas e motoboy e comparação de iFood/99Food com créditos identificados nos extratos.",
     "Conferência de backup somente de leitura; preserva a base atual e identifica divergências e possíveis duplicidades.",
-    "Apuração mensal de vendas e motoboy do Caixa, com preservação de lançamentos existentes e auditoria de alterações posteriores."
+    "Apuração mensal de vendas e motoboy do Caixa, com preservação de lançamentos existentes e auditoria de alterações posteriores.",
+    "Agenda e extratos conferem gravações concorrentes e histórico antes de salvar; os lançamentos compartilham a revisão de proteção.",
+    "Renomeação do plano de contas atualiza vínculos em lotes e informa falhas parciais."
   ],
   "limites": [
-    "Clientes precisam usar esta versão; abas antigas podem continuar gravando pelas rotinas antigas.",
+    "É necessário fechar e atualizar todas as abas antigas para que os usuários consigam gravar com as regras atualizadas.",
     "Não é possível recuperar informações antigas nunca gravadas e sem metadados.",
     "Auditoria interna não executa com todos os navegadores fechados.",
     "Na versão R8, a gravação autorizada dos extratos foi confirmada em produção; as regras então vigentes não haviam sido alteradas. Os testes de falha, concorrência e reconexão usaram somente o emulador.",
