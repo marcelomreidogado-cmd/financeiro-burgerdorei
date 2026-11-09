@@ -6,9 +6,9 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_11_09_AGENDA_GUARD_V1">
+<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_11_09_BACKUP_V2">
 <script>
-window.__BUILD_ID='FINANCEIRO_BURGER_2026_11_09_AGENDA_GUARD_V1';
+window.__BUILD_ID='FINANCEIRO_BURGER_2026_11_09_BACKUP_V2';
 (function(){
   try{
     if('serviceWorker' in navigator){
@@ -1429,7 +1429,7 @@ let fbOk = false;
 let unsubListeners = [];
 
 // Blindagem pós-resgate: evita re-render pesado enquanto o usuário clica/digita.
-const APP_VERSION = 'FINANCEIRO_BURGER_2026_11_09_AGENDA_GUARD_V1';
+const APP_VERSION = 'FINANCEIRO_BURGER_2026_11_09_BACKUP_V2';
 let renderTimer = null;
 let pendingRender = null;
 function modalAberto(){
@@ -1478,7 +1478,7 @@ function initFirebase(){
 // ── Fallback localStorage ──────────────────────────────
 const LS_KEY = 'bdr_data_v2_light';
 const LS_VER_KEY = 'bdr_build_version';
-try{ const previous=localStorage.getItem(LS_VER_KEY); if(previous!==APP_VERSION){ if(!['FINANCEIRO_BURGER_2026_10_20_R8','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2','FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V2'].includes(previous))localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
+try{ const previous=localStorage.getItem(LS_VER_KEY); if(previous!==APP_VERSION){ if(!['FINANCEIRO_BURGER_2026_10_20_R8','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2','FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V2','FINANCEIRO_BURGER_2026_11_09_AGENDA_GUARD_V1'].includes(previous))localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
 // Não limpa caches antigos a cada abertura; evita trabalho desnecessário no Chrome local.
 // try{ localStorage.removeItem('bdr_data_v1'); }catch(e){}
 // try{ localStorage.removeItem('bdr_data_v2'); }catch(e){}
@@ -3491,6 +3491,17 @@ window.exportarBackupJSON=function(){
   const data={versao:'financeiro_burger_backup_v1',exportado_em:new Date().toISOString(),store:{lancamentos:financeRaw.lancamentos,centrocusto:store.centrocusto,patrimonio:store.patrimonio,agenda:financeRaw.agenda_financeira,clientes_mes:store.clientes_mes,cfg:store.cfg}};
   baixarArquivo(`backup_financeiro_burger_${today()}.json`,JSON.stringify(data,null,2)); toast('Backup JSON gerado','ok');
 };
+window.exportarBackupAmpliadoJSON=async function(){
+  try{
+    finAssertReady(FIN_COLLECTIONS);
+    const source=window.BurgerCashIntegration?.state;
+    if(source?.status!=='ready'||!source.sourceDb||financeSync.pending||FIN_COLLECTIONS.some(c=>financeSync.collections[c]?.pending))throw new Error('Aguarde a sincronização do Financeiro e do Caixa.');
+    const data=await window.BurgerBackupCapture.capture(db,source.sourceDb);
+    finAssertReady(FIN_COLLECTIONS);
+    if(source.status!=='ready'||financeSync.pending||FIN_COLLECTIONS.some(c=>financeSync.collections[c]?.pending))throw new Error('A sincronização mudou. Tente gerar o backup novamente.');
+    baixarArquivo(`backup_financeiro_caixa_${today()}.json`,JSON.stringify(data,null,2));toast('Backup gerado','ok');
+  }catch(e){toast('Não foi possível gerar o backup: '+String(e.message||e),'er');}
+};
 window.exportarLancamentosCSV=function(){
   ccEnsureIds();
   const cols=['id','rec_desp','data_competencia','data_vencimento','data_efetivacao','forma_pagamento','categoria_id','categoria','subcategoria_id','subcategoria','descricao','fornecedor','referencia','valor','status','centro_custo','instituicao'];
@@ -3502,26 +3513,48 @@ window.exportarAuditoriaCSV=function(){
   const csv=[cols.join(';')].concat(auditoriaItens().map(x=>[x.sev,x.tipo,x.msg,(x.meta||[]).join(' | ')].map(csvEscape).join(';'))).join('\n');
   baixarArquivo(`auditoria_financeira_${today()}.csv`,csv,'text/csv;charset=utf-8'); toast('CSV da auditoria gerado','ok');
 };
+window.exportarConferenciaBackupCSV=function(){
+  const entries=window.__backupReviewResult?.entries||[];
+  const columns=['area','id','descricao','data','valor','situacao','motivo','referencias'];
+  const csv=[columns.join(';'),...entries.filter(x=>x.status!=='identical').map(x=>[x.collection,x.id,x.description,x.date,x.amount??'',x.status,x.reason,(x.related||[]).join(' | ')].map(csvEscape).join(';'))].join('\n');
+  baixarArquivo(`conferencia_backup_${today()}.csv`,csv,'text/csv;charset=utf-8');
+};
 window.importarBackupJSON=function(){const inp=$('backup-file'); if(inp)inp.click();};
 window.receberBackupArquivo=async function(el){
   const file=el?.files?.[0];if(!file)return;
   try{
-    if(typeof file.size!=='number'||file.size>50*1024*1024)throw new Error('Arquivo inválido ou maior que 50 MB.');
-    let backup;try{backup=JSON.parse(await file.text());}catch(_e){throw new Error('Arquivo de backup inválido.');}
-    if(backup?.versao!=='financeiro_burger_backup_v1')throw new Error('Formato de backup não reconhecido.');
-    const cols=['lancamentos','centrocusto','patrimonio','agenda_financeira','clientes_mes','config'];
-    finAssertReady(cols);
-    const snaps=await Promise.all(cols.map(col=>db.collection(col).get({source:'server'})));
-    if(snaps.some(x=>x.metadata.fromCache||x.metadata.hasPendingWrites))throw new Error('Aguarde a sincronização dos dados.');
-    const all=Object.fromEntries(cols.map((col,i)=>[col,snaps[i].docs.map(d=>({...d.data(),id:d.id}))]));
-    const cfg=all.config.find(x=>x.id==='main')||{};const clean={...cfg};delete clean.id;
-    const current={versao:'financeiro_burger_backup_v1',store:{lancamentos:all.lancamentos,centrocusto:all.centrocusto,patrimonio:all.patrimonio,agenda:all.agenda_financeira,clientes_mes:Object.fromEntries(all.clientes_mes.map(r=>[r.id,r.count||0])),cfg:clean}};
-    const result=BurgerBackupCompare.compare(backup,JSON.parse(JSON.stringify(current)));
-    const labels={lancamentos:'Lançamentos',agenda_financeira:'Agenda',centrocusto:'Plano de contas',patrimonio:'Patrimônio',clientes_mes:'Clientes por mês',config:'Configurações'};
-    const rows=result.collections.map(x=>`<tr><td>${agEsc(labels[x.collection]||x.collection)}</td><td>${x.identical}</td><td>${x.different}</td><td>${x.missing}</td><td>${x.possibleDuplicates+x.unclassified}</td></tr>`).join('');
-    oM('Conferência do backup',`<p>Nenhum dado foi alterado. Registros diferentes e possíveis duplicidades precisam de conferência.</p><p>Este backup não inclui os extratos bancários nem os dados do Caixa. A recuperação preservando os registros atuais ainda está em preparação.</p><div class="tw"><table><thead><tr><th>Área</th><th>Iguais</th><th>Diferentes</th><th>Não encontrados</th><th>Para conferir</th></tr></thead><tbody>${rows}</tbody></table></div>`, '<button class="btn bs" onclick="cM()">Fechar</button>',true);
+    if(typeof file.size!=='number'||file.size>50*1024*1024)throw new Error('Arquivo de backup inválido ou maior que 50 MB.');
+    let backup;try{backup=JSON.parse(await file.text());}catch(e){throw new Error('Arquivo de backup inválido.');}
+    if(!['financeiro_burger_backup_v1','financeiro_burger_backup_v2_experimental'].includes(backup?.versao))throw new Error('Formato de backup não reconhecido.');
+    if(backup.versao==='financeiro_burger_backup_v2_experimental')await window.BurgerBackupCapture.verify(backup);
+    const financeCols=backup.versao==='financeiro_burger_backup_v1'?['lancamentos','centrocusto','patrimonio','agenda_financeira','clientes_mes','config']:FIN_COLLECTIONS;
+    finAssertReady(financeCols);
+    const source=window.BurgerCashIntegration?.state;
+    if(financeSync.pending||financeCols.some(c=>financeSync.collections[c]?.pending))throw new Error('Aguarde a sincronização do Financeiro.');
+    let current;
+    if(backup?.versao!=='financeiro_burger_backup_v1'){
+      if(source?.status!=='ready'||!source.sourceDb)throw new Error('Aguarde a conexão do Caixa para conferir este backup.');
+      current=await window.BurgerBackupCapture.capture(db,source.sourceDb);
+      finAssertReady(FIN_COLLECTIONS);
+      if(source.status!=='ready'||financeSync.pending||FIN_COLLECTIONS.some(c=>financeSync.collections[c]?.pending))throw new Error('A sincronização mudou. Tente conferir novamente.');
+    }else{
+      const cols=['lancamentos','centrocusto','patrimonio','agenda_financeira','clientes_mes','config'];
+      const snaps=await Promise.all(cols.map(col=>db.collection(col).get({source:'server'})));
+      if(snaps.some(x=>x.metadata.fromCache||x.metadata.hasPendingWrites))throw new Error('Aguarde a sincronização dos dados.');
+      const all=Object.fromEntries(cols.map((col,i)=>[col,snaps[i].docs.map(d=>({...d.data(),id:d.id}))]));
+      const cfg=all.config.find(x=>x.id==='main')||{},clean={...cfg};delete clean.id;
+      current=JSON.parse(JSON.stringify({versao:'financeiro_burger_backup_v1',store:{lancamentos:all.lancamentos,centrocusto:all.centrocusto,patrimonio:all.patrimonio,agenda:all.agenda_financeira,clientes_mes:Object.fromEntries(all.clientes_mes.map(r=>[r.id,r.count||0])),cfg:clean}}));
+    }
+    const result=window.BurgerBackupCompare.compare(backup,current);
+    window.__backupReviewResult=result;
+    const labels={lancamentos:'Lançamentos',agenda_financeira:'Agenda',centrocusto:'Plano de contas',patrimonio:'Patrimônio',clientes_mes:'Clientes por mês',config:'Configurações',extratos_bancarios:'Extratos bancários',caixa:'Caixa diário',motoboys:'Motoboys'};
+    const rows=result.collections.map(r=>`<tr><td>${agEsc(labels[r.collection]||r.collection)}</td><td>${r.backup}</td><td>${r.identical}</td><td>${r.different}</td><td>${r.missing}</td><td>${r.possibleDuplicates+r.unclassified}</td></tr>`).join('');
+    const omitted=result.omitted.length?'<p>Este backup antigo não contém extratos bancários nem os dados do Caixa.</p>':'';
+    const review=result.entries.filter(x=>x.status!=='identical'),examples=review.slice(0,100).map(x=>`<tr><td>${agEsc(labels[x.collection]||x.collection)}</td><td>${agEsc(x.description||x.id)}</td><td>${agEsc(finValidDate(x.date)?fmtD(x.date):(x.date||'—'))}</td><td>${x.amount===null?'—':fmt(x.amount)}</td><td>${agEsc(x.reason)}</td></tr>`).join('');
+    const detail=review.length?'<details><summary>Ver itens para conferir ('+review.length+')</summary><p>Exibindo até 100 itens. O relatório contém todos os itens.</p><div class="tw"><table><thead><tr><th>Área</th><th>Registro</th><th>Data</th><th>Valor</th><th>Situação</th></tr></thead><tbody>'+examples+'</tbody></table></div><button class="btn bs" onclick="exportarConferenciaBackupCSV()">Baixar relatório completo</button></details>':'';
+    oM('Conferir backup','<p>Comparação com os dados atuais. Nenhum dado foi alterado; a restauração ainda não está disponível.</p>'+omitted+'<div class="tw"><table><thead><tr><th>Área</th><th>No backup</th><th>Iguais</th><th>Diferentes</th><th>Ausentes</th><th>Revisar</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+detail,'<button class="btn bs" onclick="cM()">Fechar</button>',true);
   }catch(e){toast('Não foi possível conferir o backup: '+String(e.message||e),'er');}
-  finally{el.value='';}
+  finally{if(el)el.value='';}
 };
 
 // ══════════════════════════════════════════════
@@ -3536,9 +3569,9 @@ function rCfg(){
     </div>
     <div class="bi-card" style="margin-top:12px;border-color:rgba(34,197,94,.22)">
       <div class="sh" style="color:var(--ok)">🛡️ Backup e segurança</div>
-      <div style="font-size:12px;color:var(--tx2);line-height:1.45">O JSON guarda lançamentos, Agenda, plano de contas, patrimônio, clientes e configurações. Extratos bancários e dados do Caixa não estão incluídos. Você pode conferir o arquivo sem alterar os registros atuais.</div>
+      <div style="font-size:12px;color:var(--tx2);line-height:1.45">O backup ampliado inclui o Financeiro, extratos, caixa diário e motoboys; os demais módulos do Caixa não estão incluídos. A conferência não altera os registros atuais. A recuperação ainda não está disponível.</div>
       <div class="backup-actions">
-        <button class="btn bp" onclick="exportarBackupJSON()">⬇️ Backup do Financeiro JSON</button>
+        <button class="btn bp" onclick="exportarBackupAmpliadoJSON()">⬇️ Backup Financeiro e Caixa diário JSON</button> <button class="btn bs" onclick="exportarBackupJSON()">⬇️ Backup somente Financeiro JSON</button>
         <button class="btn bs" onclick="exportarLancamentosCSV()">⬇️ Lançamentos CSV</button>
         <button class="btn bs" onclick="importarBackupJSON()">📤 Conferir backup JSON</button>
         <input id="backup-file" type="file" accept="application/json,.json" style="display:none" onchange="receberBackupArquivo(this)">
@@ -5502,6 +5535,70 @@ window.bkOpenReceipts=function(){
 window.financeReconnectAll=function(){window.BurgerCashRunner.reconnect();window.BurgerCashIntegration.start();void loadAll();};
 
 
+(function(root){
+  'use strict';
+  // Read-only export; independent projects are not an atomic snapshot.
+  // Two server reads detect common concurrent changes.
+  const financeCollections=['lancamentos','agenda_financeira','centrocusto','patrimonio','clientes_mes','config','extratos_bancarios'];
+  const cashCollections=['caixa','motoboys','caixa_integracao_locks'];
+  function encoded(value){
+    if(value===null||typeof value==='string'||typeof value==='boolean')return value;
+    if(typeof value==='number'){if(!Number.isFinite(value))throw Error('Valor inválido na base.');return value;}
+    if(Array.isArray(value))return value.map(encoded);
+    if(value&&typeof value==='object'){
+      if(typeof value.toMillis==='function'&&Number.isSafeInteger(value.seconds)&&Number.isInteger(value.nanoseconds)&&value.nanoseconds>=0&&value.nanoseconds<1000000000)return {__finance_backup_type:'timestamp',seconds:value.seconds,nanoseconds:value.nanoseconds};
+      const proto=Object.getPrototypeOf(value);if(proto!==Object.prototype&&proto!==null)throw Error('Tipo de dado não suportado no backup.');
+      if(Object.hasOwn(value,'__finance_backup_type'))throw Error('Campo reservado encontrado no backup.');
+      return Object.fromEntries(Object.keys(value).sort().map(k=>[k,encoded(value[k])]));
+    }
+    throw Error('Valor não suportado no backup.');
+  }
+  function checkSnap(s){if(s.metadata?.fromCache||s.metadata?.hasPendingWrites)throw Error('Aguardando confirmação atual dos dados.');}
+  function canonical(value){
+    if(value===null||typeof value==='string'||typeof value==='boolean')return value;
+    if(typeof value==='number'&&Number.isFinite(value))return value;
+    if(Array.isArray(value))return value.map(canonical);
+    if(value&&typeof value==='object')return Object.fromEntries(Object.keys(value).sort().map(k=>[k,canonical(value[k])]));
+    throw Error('Conteúdo inválido no backup.');
+  }
+  async function digest(data){
+    if(!root.crypto?.subtle)throw Error('Verificação do backup indisponível.');
+    const bytes=new TextEncoder().encode(JSON.stringify(canonical(data))),sum=await root.crypto.subtle.digest('SHA-256',bytes);
+    return [...new Uint8Array(sum)].map(n=>n.toString(16).padStart(2,'0')).join('');
+  }
+  async function verify(backup){
+    if(backup?.versao!=='financeiro_burger_backup_v2_experimental'||backup.integridade?.algoritmo!=='SHA-256'||!/^[a-f0-9]{64}$/.test(backup.integridade?.valor||'')||!backup.dados)throw Error('Backup sem verificação de integridade válida.');
+    if(await digest(backup.dados)!==backup.integridade.valor)throw Error('O conteúdo do backup foi alterado ou está incompleto.');
+    return true;
+  }
+  async function collection(db,name){
+    const snap=await db.collection(name).get({source:'server'});checkSnap(snap);
+    return snap.docs.map(d=>({id:d.id,data:encoded(d.data())})).sort((a,b)=>a.id.localeCompare(b.id));
+  }
+  async function doc(db,col,id){
+    const snap=await db.collection(col).doc(id).get({source:'server'});checkSnap(snap);
+    return snap.exists?encoded(snap.data()):null;
+  }
+  async function read(finance,source){
+    const [fin,cash,settings,guard]=await Promise.all([
+      Promise.all(financeCollections.map(async n=>[n,await collection(finance,n)])),
+      Promise.all(cashCollections.map(async n=>[n,await collection(source,n)])),
+      doc(finance,'caixa_fechamento_config','main'),doc(finance,'caixa_fechamento_guards','global')
+    ]);
+    const financeiro=Object.fromEntries(fin),caixa=Object.fromEntries(cash);
+    if(caixa.caixa_integracao_locks.some(x=>typeof x.data.active!=='boolean'))throw Error('Não foi possível confirmar o estado de conferência do caixa.');
+    if(caixa.caixa_integracao_locks.some(x=>x.data.active===true))throw Error('Fechamento do caixa em andamento. Tente exportar após a conferência.');
+    return {financeiro,caixa,integracao:{settings,guard}};
+  }
+  async function capture(finance,source){
+    if(!finance||!source)throw Error('Conecte o Financeiro e o Caixa para gerar o backup.');
+    const first=await read(finance,source),second=await read(finance,source);
+    if(JSON.stringify(first)!==JSON.stringify(second))throw Error('Os dados mudaram durante a leitura. Aguarde a sincronização e tente novamente.');
+    return {versao:'financeiro_burger_backup_v2_experimental',exportado_em:new Date().toISOString(),atomico:false,escopo:'Financeiro e registros de caixa/motoboys; não é backup completo de todas as áreas do Caixa.',integridade:{algoritmo:'SHA-256',valor:await digest(second)},dados:second};
+  }
+  root.BurgerBackupCapture={capture,encoded,verify,checksum:digest};
+})(typeof window==='undefined'?globalThis:window);
+
 // ── INIT ────────────────────────────────────────────────
 (async function(){
   // Limpa caches antigos pesados/corrompidos e evita renderizar milhares de lançamentos antes do Firebase responder.
@@ -5544,10 +5641,10 @@ window.financeReconnectAll=function(){window.BurgerCashRunner.reconnect();window
 </script>
 
 <script type="application/json" id="financeiro-release">{
-  "build": "FINANCEIRO_BURGER_2026_11_09_AGENDA_GUARD_V1",
+  "build": "FINANCEIRO_BURGER_2026_11_09_BACKUP_V2",
   "base": {
     "url": "https://github.com/marcelomreidogado-cmd/financeiro-burgerdorei/blob/main/index.html",
-    "sha256": "1cfd14e3130d970e28f27c6aafc7a1a5b642648b83ee62343e52c16c9da5bc17"
+    "sha256": "df056e96765f883a65acfc6a0d91121f834368da87fef4e1e5735d58d3cb3c01"
   },
   "changelog": [
     "Transações para criação, alteração, baixa e exclusão financeira; conflitos exigem revisão.",
@@ -5575,14 +5672,15 @@ window.financeReconnectAll=function(){window.BurgerCashRunner.reconnect();window
     "Conferência de backup somente de leitura; preserva a base atual e identifica divergências e possíveis duplicidades.",
     "Apuração mensal de vendas e motoboy do Caixa, com preservação de lançamentos existentes e auditoria de alterações posteriores.",
     "Agenda e extratos conferem gravações concorrentes e histórico antes de salvar; os lançamentos compartilham a revisão de proteção.",
-    "Renomeação do plano de contas atualiza vínculos em lotes e informa falhas parciais."
+    "Renomeação do plano de contas atualiza vínculos em lotes e informa falhas parciais.",
+    "Backup ampliado de Financeiro, extratos, caixa diário e motoboys; conferência de arquivos v1 e v2 somente leitura."
   ],
   "limites": [
     "É necessário fechar e atualizar todas as abas antigas para que os usuários consigam gravar com as regras atualizadas.",
     "Não é possível recuperar informações antigas nunca gravadas e sem metadados.",
     "Auditoria interna não executa com todos os navegadores fechados.",
     "Na versão R8, a gravação autorizada dos extratos foi confirmada em produção; as regras então vigentes não haviam sido alteradas. Os testes de falha, concorrência e reconexão usaram somente o emulador.",
-    "Recuperação aditiva ainda não está disponível; o backup anterior não contém extratos bancários nem os dados do Caixa.",
+    "Recuperação aditiva ainda não está disponível. O backup v1 não contém extratos nem Caixa; o v2 inclui somente caixa diário e motoboys, não os demais módulos do Caixa. As leituras entre projetos não são atômicas.",
     "Fechamentos incompletos ou com registros existentes são encaminhados para conferência; alterações posteriores no Caixa são sinalizadas na Auditoria."
   ],
   "publicacao": [
