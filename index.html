@@ -6,9 +6,9 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_11_09_BACKUP_V2">
+<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_11_09_BUSCA_PERIODOS_V1">
 <script>
-window.__BUILD_ID='FINANCEIRO_BURGER_2026_11_09_BACKUP_V2';
+window.__BUILD_ID='FINANCEIRO_BURGER_2026_11_09_BUSCA_PERIODOS_V1';
 (function(){
   try{
     if('serviceWorker' in navigator){
@@ -898,6 +898,12 @@ body,.app,.content,.btn,.fc,.fv,input,select,textarea,table{font-family:var(--fo
 .lx-subtitle{margin-top:6px;font-size:12px;color:var(--tx2);margin-bottom:4px}
 .lx-filters{display:grid;grid-template-columns:minmax(220px,1.35fr) repeat(5,minmax(120px,.7fr)) auto auto;gap:10px;align-items:end;margin-top:16px}
 .lx-filters .fc,.lx-filters .sw-wrap{margin:0}
+.lx-periods{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:14px}
+.lx-periods>span{font-size:12px;color:var(--tx2);font-weight:700;margin-right:3px}
+.lx-periods button,.lx-months button{font:inherit;font-size:12px;max-width:100%;white-space:normal;overflow-wrap:anywhere;padding:7px 11px;border:1px solid var(--bd);border-radius:9px;background:var(--s2);color:var(--tx2);cursor:pointer}
+.lx-periods button[aria-pressed="true"],.lx-months button[aria-pressed="true"]{border-color:var(--acc);color:var(--tx);background:rgba(255,120,20,.14)}
+.lx-months{display:flex;flex-wrap:wrap;gap:6px;max-height:148px;overflow:auto;margin-top:9px;padding:2px}
+.lx-months button{text-align:left}
 .lx-note{font-size:11px;color:var(--tx3);margin-top:10px}
 .tbl-lanc th,.tbl-lanc td{vertical-align:middle}
 .tbl-lanc td{padding-top:11px;padding-bottom:11px}
@@ -1429,7 +1435,7 @@ let fbOk = false;
 let unsubListeners = [];
 
 // Blindagem pós-resgate: evita re-render pesado enquanto o usuário clica/digita.
-const APP_VERSION = 'FINANCEIRO_BURGER_2026_11_09_BACKUP_V2';
+const APP_VERSION = 'FINANCEIRO_BURGER_2026_11_09_BUSCA_PERIODOS_V1';
 let renderTimer = null;
 let pendingRender = null;
 function modalAberto(){
@@ -1478,7 +1484,7 @@ function initFirebase(){
 // ── Fallback localStorage ──────────────────────────────
 const LS_KEY = 'bdr_data_v2_light';
 const LS_VER_KEY = 'bdr_build_version';
-try{ const previous=localStorage.getItem(LS_VER_KEY); if(previous!==APP_VERSION){ if(!['FINANCEIRO_BURGER_2026_10_20_R8','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2','FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V2','FINANCEIRO_BURGER_2026_11_09_AGENDA_GUARD_V1'].includes(previous))localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
+try{ const previous=localStorage.getItem(LS_VER_KEY); if(previous!==APP_VERSION){ if(!['FINANCEIRO_BURGER_2026_10_20_R8','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2','FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V2','FINANCEIRO_BURGER_2026_11_09_AGENDA_GUARD_V1','FINANCEIRO_BURGER_2026_11_09_BACKUP_V2'].includes(previous))localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
 // Não limpa caches antigos a cada abertura; evita trabalho desnecessário no Chrome local.
 // try{ localStorage.removeItem('bdr_data_v1'); }catch(e){}
 // try{ localStorage.removeItem('bdr_data_v2'); }catch(e){}
@@ -2008,11 +2014,35 @@ function lancMesesDisponiveis(){
 let sortKey='data_vencimento',sortDir='asc';
 let lancBusca='';
 let lancMesSel=today().slice(0,7);
+let lancPeriodo='mes',lancPeriodoManual=false,lancMesesEscolhidos=new Set();
+function lancSerieTipo(r){
+  const type=String(r?.serie_tipo||'').toLowerCase();
+  return {parcelada:!!(r?.parcela_info||r?.parcelamento_id||r?.parcelado||type==='parcelada'),recorrente:!!(r?.recorrente||r?.recorrencia_id||type==='recorrente')};
+}
+function lancNoPeriodo(r,hoje){
+  const mes=lancVencimentoMes(r);
+  if(lancPeriodo==='todos')return true;
+  if(lancPeriodo==='futuros')return finValidDate(r?.data_vencimento)&&r.data_vencimento>=hoje;
+  if(lancPeriodo==='escolher')return lancMesesEscolhidos.has(mes);
+  return mes===lancMesSel;
+}
+function lancPeriodoNome(){return lancPeriodo==='todos'?'Todos os meses':lancPeriodo==='futuros'?'A partir de hoje':lancPeriodo==='escolher'?'Meses selecionados':lancMesExt(lancMesSel);}
+window.setLancPeriodo=periodo=>{
+  if(!['mes','todos','futuros','escolher'].includes(periodo))return;
+  lancPeriodo=periodo;lancPeriodoManual=true;
+  if(periodo==='escolher'&&!lancMesesEscolhidos.size)lancMesesEscolhidos.add(lancMesSel);
+  CP=1;rLanc();
+};
+window.toggleLancMes=mes=>{
+  if(!lancMesesDisponiveis().includes(mes))return;
+  if(lancMesesEscolhidos.has(mes))lancMesesEscolhidos.delete(mes);else lancMesesEscolhidos.add(mes);
+  lancPeriodo='escolher';lancPeriodoManual=true;CP=1;rLanc();
+};
 const LANC_MESES_EXT=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 const lancMesExt=m=>{if(m==='sem-vencimento')return 'Sem vencimento';if(!m)return 'Sem mês';const[y,mo]=m.split('-');return `${LANC_MESES_EXT[+mo-1]} de ${y}`;};
 
 
-window.setLancMes=m=>{lancMesSel=m||today().slice(0,7);CP=1;rLanc();};
+window.setLancMes=m=>{lancMesSel=m||today().slice(0,7);lancPeriodo='mes';lancPeriodoManual=true;CP=1;rLanc();};
 window.shiftLancMes=delta=>{
   const hoje=today().slice(0,7);
   const meses=lancMesesDisponiveis();
@@ -2022,23 +2052,25 @@ window.shiftLancMes=delta=>{
   const idx=meses.indexOf(lancMesSel);
   const next=Math.max(0,Math.min(meses.length-1,idx+delta));
   lancMesSel=meses[next]||lancMesSel||hoje;
+  lancPeriodo='mes';lancPeriodoManual=true;
   CP=1;
   rLanc();
 };
 window.clearLancFiltros=()=>{
-  lancBusca='';
-  ['sw-l','fst','ftp','fcat','fsub','ffp'].forEach(id=>{const el=$(id);if(el)el.value='';});
+  lancBusca='';lancPeriodo='mes';lancPeriodoManual=false;lancMesesEscolhidos.clear();
+  ['sw-l','fst','ftp','fcat','fsub','ffp','fserie'].forEach(id=>{const el=$(id);if(el)el.value='';});
   rLanc(true);
 };
 
 function rLanc(){
   const swRaw=lancBusca||'';
-  const sw=swRaw.toLowerCase();
+  const sw=lancNormText(swRaw);
   const fS=($('fst')||{value:''}).value;
   const fT=($('ftp')||{value:''}).value;
   const fC=($('fcat')||{value:''}).value;
   const fFP=($('ffp')||{value:''}).value;
   const fSub=($('fsub')||{value:''}).value;
+  const fSerie=($('fserie')||{value:''}).value;
   const hojeLanc=today();
   const mesAtualLanc=hojeLanc.slice(0,7);
   const mesesDisp=lancMesesDisponiveis();
@@ -2052,13 +2084,14 @@ function rLanc(){
   const subs=[...new Set(store.lancamentos.filter(r=>!fC||r.categoria===fC).map(r=>r.subcategoria).filter(Boolean))].sort();
 
   let data=store.lancamentos.filter(r=>{
-    if(lancVencimentoMes(r)!==lancMesSel) return false;
+    if(!lancNoPeriodo(r,hojeLanc))return false;
+    const serie=lancSerieTipo(r);if(fSerie==='parcelada'&&!serie.parcelada||fSerie==='recorrente'&&!serie.recorrente)return false;
     if(fS&&r.status!==fS)return false;
     if(fT&&r.rec_desp!==fT)return false;
     if(fC&&r.categoria!==fC)return false;
     if(fSub&&r.subcategoria!==fSub)return false;
     if(fFP&&r.forma_pagamento!==fFP)return false;
-    if(sw){const s=`${r.descricao||''} ${r.categoria||''} ${r.subcategoria||''} ${r.forma_pagamento||''} ${r.fornecedor||''} ${r.referencia||''}`.toLowerCase();if(!s.includes(sw))return false;}
+    if(sw){const s=lancNormText(`${r.descricao||''} ${r.categoria||''} ${r.subcategoria||''} ${r.forma_pagamento||''} ${r.fornecedor||''} ${r.referencia||''}`);if(!s.includes(sw))return false;}
     return true;
   });
 
@@ -2070,8 +2103,8 @@ function rLanc(){
     return sortDir==='asc'?(va>vb?1:-1):(va<vb?1:-1);
   });
 
-  const tIn=data.filter(r=>r.rec_desp==='Contas a receber').reduce((s,r)=>s+r.valor,0);
-  const tOut=data.filter(r=>r.rec_desp!=='Contas a receber').reduce((s,r)=>s+r.valor,0);
+  const tIn=data.filter(r=>r.rec_desp==='Contas a receber').reduce((s,r)=>s+(+r.valor||0),0);
+  const tOut=data.filter(r=>r.rec_desp!=='Contas a receber').reduce((s,r)=>s+(+r.valor||0),0);
   const pendentes=data.filter(r=>r.status==='Pendente');
   const vencidos=pendentes.filter(r=>r.data_vencimento&&r.data_vencimento<hojeLanc);
   const concluidos=data.filter(r=>r.status==='Concluído');
@@ -2083,8 +2116,7 @@ function rLanc(){
 
   const rows=data.map(r=>{
     const isIn=r.rec_desp==='Contas a receber';
-    const isParc=!!(r.parcela_info||r.parcelamento_id);
-    const isRec=!!(r.recorrente||r.recorrencia_id);
+    const {parcelada:isParc,recorrente:isRec}=lancSerieTipo(r);
     const statusTxt=r.status==='Concluído'?'Concluído':'Pendente';
     const parcTag=isParc?`<span class="bg bpu2" style="font-size:10px;margin-left:4px">Parcelado${r.parcela_info?' '+r.parcela_info:''}</span>`:'';
     const recTag=isRec?`<span class="bg bblue" style="font-size:10px;margin-left:4px">Recorrente</span>`:'';
@@ -2111,7 +2143,7 @@ function rLanc(){
       <div class="lx-head-top">
         <button class="lx-navbtn" onclick="shiftLancMes(-1)" ${idxMes<=0?'disabled':''}>‹</button>
         <div class="lx-titlewrap">
-          <h2 class="lx-title">${lancMesExt(lancMesSel)}</h2>
+          <h2 class="lx-title">${lancPeriodoNome()}</h2>
           <div class="lx-subtitle">Por vencimento</div>
         </div>
         <button class="lx-navbtn" onclick="shiftLancMes(1)" ${idxMes>=mesesDisp.length-1?'disabled':''}>›</button>
@@ -2119,6 +2151,7 @@ function rLanc(){
       <div class="lx-filters">
         <div class="sw-wrap full-row"><span class="si">🔍</span><input id="sw-l" type="text" placeholder="Buscar descrição, fornecedor, nota ou categoria…" value="${ccSafe(swRaw)}" oninput="setLancBusca(this.value)" onkeydown="if(event.key==='Enter'){clearTimeout(DT);lancBusca=this.value||'';rLanc(true)}" autocomplete="off" spellcheck="false"></div>
         <select id="ftp" class="fc" onchange="rLanc()"><option value="">Tipo: Todos</option><option value="Contas a receber" ${fT==='Contas a receber'?'selected':''}>↑ Vendas</option><option value="Contas a pagar" ${fT==='Contas a pagar'?'selected':''}>↓ Pagar</option></select>
+        <select id="fserie" class="fc" onchange="rLanc()" aria-label="Parcelamento ou recorrência"><option value="">Séries: Todas</option><option value="parcelada" ${fSerie==='parcelada'?'selected':''}>Parceladas</option><option value="recorrente" ${fSerie==='recorrente'?'selected':''}>Recorrentes</option></select>
         <select id="fst" class="fc" onchange="rLanc()"><option value="">Status: Todos</option><option value="Concluído" ${fS==='Concluído'?'selected':''}>Concluído</option><option value="Pendente" ${fS==='Pendente'?'selected':''}>Pendente</option></select>
         <select id="fcat" class="fc" onchange="rLanc()"><option value="">Categoria: Todas</option>${cats.map(c=>`<option value="${c}" ${fC===c?'selected':''}>${c}</option>`).join('')}</select>
         <select id="fsub" class="fc" onchange="rLanc()"><option value="">Subcategoria: Todas</option>${subs.map(s=>`<option value="${s}" ${fSub===s?'selected':''}>${s}</option>`).join('')}</select>
@@ -2127,9 +2160,11 @@ function rLanc(){
         <button class="btn bs" onclick="clearLancFiltros()">Limpar</button>
         <button class="btn bp" onclick="nL()">＋ Novo</button>
       </div>
+      <div class="lx-periods" aria-label="Período por vencimento"><span>Período:</span>${[['mes','Mês selecionado'],['todos','Todos os meses'],['futuros','A partir de hoje'],['escolher','Escolher meses']].map(([id,label])=>`<button type="button" aria-pressed="${lancPeriodo===id}" onclick="setLancPeriodo('${id}')">${label}</button>`).join('')}</div>
+      ${lancPeriodo==='escolher'?`<div class="lx-months" aria-label="Meses de vencimento">${mesesDisp.map(m=>`<button type="button" aria-pressed="${lancMesesEscolhidos.has(m)}" onclick="toggleLancMes('${m}')">${lancMesExt(m)}</button>`).join('')}</div>`:''}
     </div>
     <div class="kpis">
-      <div class="kpi" style="--kc:var(--acc)"><div class="kpi-l">Total do mês</div><div class="kpi-v">${fmt(tIn+tOut)}</div><div class="kpi-s">${data.length} registros em ${lancMesExt(lancMesSel)}</div></div>
+      <div class="kpi" style="--kc:var(--acc)"><div class="kpi-l">${lancPeriodo==='mes'?'Total do mês':'Total do período'}</div><div class="kpi-v">${fmt(tIn+tOut)}</div><div class="kpi-s">${data.length} registros · ${lancPeriodoNome()}</div></div>
       <div class="kpi" style="--kc:var(--ok)"><div class="kpi-l">Entradas</div><div class="kpi-v">${fmt(tIn)}</div><div class="kpi-s">${data.filter(r=>r.rec_desp==='Contas a receber').length} registros</div></div>
       <div class="kpi" style="--kc:var(--er)"><div class="kpi-l">Saídas</div><div class="kpi-v">${fmt(tOut)}</div><div class="kpi-s">${data.filter(r=>r.rec_desp!=='Contas a receber').length} registros</div></div>
       <div class="kpi" style="--kc:${tIn-tOut>=0?'var(--ok)':'var(--er)'}"><div class="kpi-l">Resultado</div><div class="kpi-v" style="color:${tIn-tOut>=0?'var(--ok)':'var(--er)'}">${fmt(tIn-tOut)}</div><div class="kpi-s">${pendentes.length} pendentes · ${vencidos.length} vencidos (${fmt(vencidos.reduce((sum,r)=>sum+(+r.valor||0),0))})</div></div>
@@ -2147,9 +2182,9 @@ function rLanc(){
         ${thC('valor','Valor')}
         <th>Status</th><th style="width:68px"></th>
       </tr></thead>
-      <tbody>${rows||`<tr><td colspan="10"><div class="es"><div class="em">📭</div><h3>Sem resultados</h3><p>Não há lançamentos para ${lancMesExt(lancMesSel)} com os filtros atuais.</p></div></td></tr>`}</tbody>
+      <tbody>${rows||`<tr><td colspan="10"><div class="es"><div class="em">📭</div><h3>Sem resultados</h3><p>Não há lançamentos para o período e os filtros selecionados.</p></div></td></tr>`}</tbody>
     </table></div>
-    <div style="font-size:11px;color:var(--tx3);margin-top:8px;text-align:right">${data.length} registros em ${lancMesExt(lancMesSel)}</div>`;
+    <div style="font-size:11px;color:var(--tx3);margin-top:8px;text-align:right">${data.length} registros · ${lancPeriodoNome()}</div>`;
   if(arguments[0]===true){
     requestAnimationFrame(()=>{const el=$('sw-l');if(el){el.focus();const p=el.value.length;try{el.setSelectionRange(p,p);}catch(e){}}});
   }
@@ -2158,6 +2193,7 @@ function rLanc(){
 window.setLancBusca=v=>{
   // Não re-renderiza a tela a cada letra: espera uma pequena pausa para não travar a digitação.
   lancBusca=v||'';
+  if(!lancPeriodoManual)lancPeriodo=lancBusca.trim()?'todos':'mes';
   CP=1;
   clearTimeout(DT);
   DT=setTimeout(()=>requestAnimationFrame(()=>rLanc(true)),520);
@@ -5641,10 +5677,10 @@ window.financeReconnectAll=function(){window.BurgerCashRunner.reconnect();window
 </script>
 
 <script type="application/json" id="financeiro-release">{
-  "build": "FINANCEIRO_BURGER_2026_11_09_BACKUP_V2",
+  "build": "FINANCEIRO_BURGER_2026_11_09_BUSCA_PERIODOS_V1",
   "base": {
     "url": "https://github.com/marcelomreidogado-cmd/financeiro-burgerdorei/blob/main/index.html",
-    "sha256": "df056e96765f883a65acfc6a0d91121f834368da87fef4e1e5735d58d3cb3c01"
+    "sha256": "e72651bdfe41e872f48cd66e05a92589e4be8bb399b16782c07dd8ff85290e4b"
   },
   "changelog": [
     "Transações para criação, alteração, baixa e exclusão financeira; conflitos exigem revisão.",
@@ -5673,7 +5709,8 @@ window.financeReconnectAll=function(){window.BurgerCashRunner.reconnect();window
     "Apuração mensal de vendas e motoboy do Caixa, com preservação de lançamentos existentes e auditoria de alterações posteriores.",
     "Agenda e extratos conferem gravações concorrentes e histórico antes de salvar; os lançamentos compartilham a revisão de proteção.",
     "Renomeação do plano de contas atualiza vínculos em lotes e informa falhas parciais.",
-    "Backup ampliado de Financeiro, extratos, caixa diário e motoboys; conferência de arquivos v1 e v2 somente leitura."
+    "Backup ampliado de Financeiro, extratos, caixa diário e motoboys; conferência de arquivos v1 e v2 somente leitura.",
+    "Lançamentos: busca por todos os meses ou meses escolhidos e filtros para parceladas, recorrentes e vencimentos futuros."
   ],
   "limites": [
     "É necessário fechar e atualizar todas as abas antigas para que os usuários consigam gravar com as regras atualizadas.",
