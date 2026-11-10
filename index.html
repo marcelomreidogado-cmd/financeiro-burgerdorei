@@ -6,9 +6,9 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_11_09_AGENDA_EXTRATO_V1">
+<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_11_10_ACESSO_V1">
 <script>
-window.__BUILD_ID='FINANCEIRO_BURGER_2026_11_09_AGENDA_EXTRATO_V1';
+window.__BUILD_ID='FINANCEIRO_BURGER_2026_11_10_ACESSO_V1';
 (function(){
   try{
     if('serviceWorker' in navigator){
@@ -993,9 +993,19 @@ body,.app,.content,.btn,.fc,.fv,input,select,textarea,table{font-family:var(--fo
 @media(max-width:650px){#content.bank-content{padding:14px 12px 40px!important;}.bk-kpis{grid-template-columns:1fr;}.bk-header h1{font-size:22px;}.bk-period>span{width:100%;margin:0;}.bk-panel{padding:14px;}.bk-controls{align-items:stretch;}.bk-controls label{flex-wrap:wrap;max-width:100%;}.bk-controls select{max-width:100%;}.bk-tabs{width:100%;}.bk-page input{width:100%;}.bk-pager{flex-wrap:wrap;}.bk-pager span{width:100%;}}
 
 </style>
+<style>#fin-auth-gate[hidden]{display:none!important}</style>
 </head>
 <body>
-<div id="app">
+<div id="fin-auth-gate" style="min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--bg)">
+  <form id="fin-auth-form" onsubmit="return false" style="width:min(100%,400px);padding:28px;background:var(--s1);border:1px solid var(--bd);border-radius:18px;box-shadow:var(--sh)">
+    <h1 style="margin:0 0 8px;font-size:24px">Financeiro Burger</h1><p style="color:var(--tx2);margin-bottom:22px">Entre com seu usuário e senha.</p>
+    <label class="fl" for="fin-auth-user">Usuário</label><input class="fv" id="fin-auth-user" autocomplete="username" maxlength="32" required disabled>
+    <label class="fl" for="fin-auth-password" style="margin-top:14px">Senha</label><input class="fv" id="fin-auth-password" type="password" autocomplete="current-password" required disabled>
+    <p id="fin-auth-message" role="status" style="min-height:20px;margin:10px 0"></p><button id="fin-auth-submit" class="btn bp" style="width:100%" type="submit" disabled>Entrar</button>
+    <button type="button" id="fin-auth-recover" class="btn bs" style="width:100%;margin-top:8px" disabled>Esqueci minha senha</button>
+  </form>
+</div>
+<div id="app" style="display:none">
   <nav id="sb">
     <div class="sb-logo" style="padding:0 10px;justify-content:center">
       <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAAAwCAIAAAAZy+Y5AAABCGlDQ1BJQ0MgUHJvZmlsZQAAeJxjYGA8wQAELAYMDLl5JUVB7k4KEZFRCuwPGBiBEAwSk4sLGHADoKpv1yBqL+viUYcLcKakFicD6Q9ArFIEtBxopAiQLZIOYWuA2EkQtg2IXV5SUAJkB4DYRSFBzkB2CpCtkY7ETkJiJxcUgdT3ANk2uTmlyQh3M/Ck5oUGA2kOIJZhKGYIYnBncAL5H6IkfxEDg8VXBgbmCQixpJkMDNtbGRgkbiHEVBYwMPC3MDBsO48QQ4RJQWJRIliIBYiZ0tIYGD4tZ2DgjWRgEL7AwMAVDQsIHG5TALvNnSEfCNMZchhSgSKeDHkMyQx6QJYRgwGDIYMZAKbWPz9HbOBQAAAcFUlEQVR42u18eXyU1bnw85zzLjOTyQ4JJCFAACUFBblgUdxAQdku1qqI1bZal/tVFFq1Pwv6iUuJiloEQa0ivdpPbZGWRTRYkE8iKhSQnbLvhEyWmUxmJvMu5zz3j5O8DElU2gYveu/7yy+/mfd9zznPefbtDMD/gAsBGDZ95ogtHn23L/4dJy2CwVEQEkDHgN7ogiS4pLN/Qq/ArnpiDG0h/5fA39ZLY0jArihMB4LfDU2/KN88EKVXhqX9sp+5YK/T4PJjMTvT1AFQEH1nkfBd3RhDcCVeWmAOK2LbauDifC5JjCgMdC+kqhPy/Bw+pqv2txAmJX9pW5QjCPpfCf5WaWYifG5IFhA8eIF+U0+uIxSmawv2CVNgdZLG92HnZcDVJbxLANdVicpGwRC+kyTGb16wJMGwQt/15+iuTQxPQkAACE1YxuavAG3gvekpQtxlv9mQiNoSQFLLVXDZqMyru7JDESjJpbmbaX2NXHYw6RJ0CvAfn2MO6sguypf+bPb5Przoz7UKsFPxwjIMNvXfAmmaJGobGEy5gylbSN2UJNAMfHe389GxZItVvk0ERvyaqSjFzhkMfRoSESICIKYQGAAIyHsZAb2pm15AICJvbNwlOnVyb1cc2X/09d/am9cn+TXvRYV0Pfn2a/qIosDjF/LtEfHUhuSWGqtp6lbYSdMZpsBzOjv1yK1GISIiJgXZX2IG6Ex6AN+oBDPGGGNEJIT4ptgXAVl+gCUckXCEbJZBU2OdA6zeprokAaCmoZCSpDwDANDpyAZjDBGllLK9YWg3AmdnZ2ua5rqux+CKkFJKIYQQwrbtU3U1SiK/35edlW3ZdtMoIs65kLK2pgYQicgwjI4dOiQty3uBcQ4A1aFQXn6+woh6pMRareW6ruM4LdgIEU+VFQRAAJn6gmmamqZxzqWUjuMkk0n1mYia7QJmZmbalpWCP5RCyFOl0O/3x2IxIQRjLD8vz3HdVHlVYLuuq+BMJaoSgHaUaa1d5FJK2b9//3nz5imcKlSappmWlqZIW1dXV1tbGwqF9u7dW1FRsWLFCtd1GWOBQNr83/++b9++iURC7c3v999zzz2LFi3ijBGRruszX3jhkksuicViCtfBYHDq1Knz5s274YYbHnnkkWg0yjkHACllWlqaaZqu61qWVVtbW11dfeTIkW3btn26Zs3na9emYk3BDEAlJSWXXXZZ//79i4uLO3funJeXl5aWpus6EVmWVV1dHQwGy8rK5s2bxzVNUeLee++97bbbotGoEjsiCgQChmGkkjAYDB4+fHj06NFVVVWTJk++/fbb6+vrPTjT09N1XVcMVFNTEwqFDh06tGXLloqKiq1bt551Eqw2qev6xo0bu3fvnkwmAcDn8+3atWvFihWmaRYUFFx88cU5OTkAoGmalHL16tU/+clPQqGQEKKsrOyhhx4KhUKcc13Xw+Fw//79I5EIInLOXdd94IEHZsyYoV5gjAkhLrzwwgMHDvTp02fNmjWKpYjI5/NVVFSsX78+LS2tU6dOF110UWFhoRBC07RkMllRUTFx4sQDBw54NCgpKXn00UdHjBiRm5srpTRNMx6Pb968ec+ePQqwjIyM4uLiSy+99IMPPpgwYYIijxDisssuW7lyZUNDg+JIwzDWrl27b98+InIcR9d1RNQ0rVevXgsWLHjhhReuvvrqpUuXRiIRzrni+2XLlu3Zsyc9Pb2oqGjIkCEKAMZYIpFYunTp5MmT6+rq2ss2t1scrOu6EMJxHNd1FXaWL18+ZcoU9fSaa65ZuHBhOBxmjBmGMXz48D59+lRWVirDY9u267rKb3IcR6EyVdrUtESkCKzERdd1tRYAuK6bkZHx+uuvL1iwQI3Ky8srLy/v2rWrYriRI0c+88wz119/vaZpQojS0tL333+/qKgoHA6HQqH09PTy8vJHH3108+bNLfbVsWPH7OxsRBRCKMBc100kEpZlKWBM03ziiSdWrVrVGiemaSoB8OCXUhqGUVZW5i2kIAkEAsq63XLLLZWVlb/61a845+3iqbQbgZsMVfMFAIFAAADy8/P79ev3i1/8wnEcTdMQMRQKTZ8+vaKiQqkpJZfeQGWzWyuJ1Oukj928lvqfk5PjWdBQKLR///7S0lLbthGxvr4+Pz9fwQkA06dPLywsPHHihK7r6enpu3btGj9+vGVZyt9RLKWWqK6urq6uTnWe1SMPZgAwDINzrtb1NIQS6NbwA0BmZqamaYwx13V37txZWVl53nnnxeNxIkokEp06dTobM1ke9ADAOW9oaBg7duyAAQN69eqlIK6qquKcO44zZ86cl156SUqpaf/k6l+mu5LJpOu6iopKVXhvegIhpezYseMFF1wQjUYNwxBCBAKB999/37IswzCUy5OdnV1WVtaxY0fHcdQ8x48fnzJlSjgc/lou9/6rRdtILXGuTI9iCF3XNU1LhdNN8cjawUNqx7lSBct13ezs7OLi4g0bNkyfPv2dd94xTVMRtaysbPfu3XfffbcXJrYjkyn0KUvvOI43uSJ5E1NrWotFhRBKeRAR57ympsZ13XHjxl1zzTUjRowYM2ZMfX19bW1tmxzpBX62bXtefZukPSlVmubBqdz+NuE863LRHpRCiKysrLfffnvixImJRELdfPnll3/605+Gw+FEIpGTk/Pyyy/X1NQsXLjwdJT/6cgxIiYSCYUvdadDhw5KGlzXDQaDyhirr6k4VRhvMVtdXV0ymYxEIsrYh0Ihb4OGYSiiKn2eSCSmTZt2xx13KN2u3KvZs2fPnTtX0a812JFIxIMzEAhkZmZ6cPr9fsuLwc5aAhORpmlVVVWJREKhw7KsgwcPKjxyzhOJRDAY7Nq1a5t0Ok2ZTo0XlSMzcODAw4cPBwKB4uLicePG9evXLx6P67reoUOHLVu2TJkyxbPfLRZtzou1IWRKbabKrq7rnpAp56ugoCArK0tNwjkvKSlJT0//MkYUQnz/+98novT09J49e44fP76wsDCRSPh8vtzc3NWrV8+YMaNVyH4WEFi50KkYVAGDp7VM0/SAVghSLNxC77UmcGuV1foO5zwajU6ePPnBBx8EAOWWNzQ06LpeV1d31113LV++PB6PK8lThrZF9lG56N6dFmmZVJBSGUvpqjvvvHPRokXYnJnJzc1tbGz0NtgC8mQyOWvWLDWhZVmO48RiMb/fv3fv3kceeWTlypXKK2yvlBZrRwPcWhaVEKisQjKZTBVxlQ0AgMbGxtSByotWQqNcTc8X9XAaj8dbG4X09PRXX311zJgxU6dObWxsrK+vV65Abm6u67rxeNwwDGXhotGoCkNt22aMNTY2Dh8+XNM09dUzjalEVYGZglMZgtSnUkoVxCsXqbKy0ot6W2PJ5/M9/vjj11577axZs4QQKgHiOE5+fv7x48dt21ZplrPOyfLiE4/SSowsy7Jtu7CwcNiwYbFYTKXoTNM0DGP37t3BYHD06NFqiMrbGYYRDAaVPkgmk1LKnJwcZTXVVVBQMHbsWCW13nLKHV29evWyZcumT58+c+bMvLw8IYR69Ic//GHw4MG2bSttIaV8+OGHq6ur8/PzFb379u37xhtvlJSUSCkty3JdV7Gdt6hiKc8GK2H1dhqNRpWTpVKzHs95XqT3slJmS5cuXbx48aRJkxYuXJifn69ylhkZGUuWLCkuLm6dCTgrVLTruoZhKClR1B05cqTP59N1vUuXLoMGDcrLy7NtOy8vT0pZWVn59NNPv/vuu8FgcMmSJT6fr1u3bipxkZmZuXLlyk8++eTEiROGYZSWll566aUqngaA+vr68vLy/fv3qxV9Pp+yC4wxXdcDgQBjzND1x6ZN61FSMmHCTdFoAwDoGv/TH98ZNWrUtu07OEPO2MaNG6+68sppj00besXQvLw8knLChAkjR47csGHDnj17wuHw0KFDpZSZmZmcc9M0r7zyypdemuvYNgII1zV0zdE4ItM4k8K97957r7j8ck3jzRRlhqGXlpa+9957v/vdq5yh32cmGw3GuRTCMIy0tICucQD8+f/5j67FXQYPHhyPJ1zHLujc+d0Ffxo7dmxVqLq9zHA7hChKA19++eWvvvpqai7a5/MFAgEism07HA6r5PDevXvXr19fUVFRU1PjzZCenj548OCBAwf27t27oKAgPz9fpSwAIB6PV1VVqazF1q1b165du2PHDjXq3nvvfeCBB1QuWqno8vLySZMmWZYDIAOZ2X/98K/B9KBwhZAi4A/U1tZMmTr1k1UrUwvNXbuXDLn4ogv69+vWtWtB5075efn+tDTOtYZYLBwOR6PRqqqqffv2bd68edGycpFMAMCDU6ZOnjS5PlrPGfcyz4ZheIUjAgj4/ceOHRs6dGjl0aOPTy+7cfxN8Vg0aHBXyIyMjNkvvfLM9N8A4yDdnqV9Fi9a7LgOAjium5mRsWPn3//vlIe2bN4EiP96gavdYtCsrCxl81KNk5dbUOq3hVuknrbOySl7plwex3FaDPQSXjk5OY7jqDoPIJIk02dGIvVFfuCchCC/32/ouiRCACGFafoZY7W1NQRIBALQkRBOnDo7IKCmGdzH0XFdyz75sHs6A0QAVljQ2XEFAXg9IFIKKQkACBCBENHnD9RHwjW1Eb/P6NwxxyAnbNGeiNAZEWCvXF+4rtYRxBABZDAtyDWNSCKg47rZmRkHwsnj1bWI8K/L8DdRD1YkUWGilNJDR+uCqOeBe+bNG+g55F/nXuJd3wvOvFRHIUFKkuRtUUhCAK5pqslSSHIIHMlsYg2OrEyIffVya629qUZsr3PrnaaaJmMMGXKAJwYFJ52PwiHXtqGpT4G8Fg5BQAQEwJCAQEjSNK7pBpEE4ZgabyA2YnF8fa0DAA+c5//NEJ9wgCEwAFe4RISAgohr7G9VdN3yeFgQyXbQ0Weko+OrjYfhS9N9AXAaG+MxbJYCxf90OuA2d/kgIgIxrgUychuTSTcZk0IggiRcMTbnyq4CbGzpRBKBnnLTI44E4AiKai6EEvBxpXx1h/XXIxYAMSAJ4Ofa3h9lFaQ5IFkbaDMQmNoGeg0dTQKICBJAp/1VeOHChjpLEMEXN2T2z5PkpLa0AEgAgw/7S2zVsaTG0JVnUzUplaiBQODGG2/0+XyeSdZ13bKsaLS+fEXFzSVscIH5q3VGPO4A2ak9D2Yg7fy+fb5XWlpQWJidne03TVeISH39icrKvXv3bty8JVxTfZIPiAA4+jKuK/EN7ag9tCmjKlRJwkWkYzGbQHMlaacSFzm+s1N+csI2OZocc03skckH57HO6eQmSVGFI+T54IZeeENP/1u7jDv/f6xRCAaQlLIyLjunoZTETiWwC/jaF+7+BoFEDoEriYgMznSGBGAyyPZhtgH98vWriow/7o0DQFWCCJiQxBmkKGIiG0IJiQDybEt0pFpQy7KGDx9+8803q44IxtixY8ds2+7WtfiV136/5PmHe2uRp/uaJ3pnHY7RkahbnXBrLYph4NYfjunY9ZyEZbvJZH1dxAoEXNtybKdzXqcuxd2uvLD/nxYtraysLEzDDB0L0ni3TK1HhpbO7Q31OpLbrOHB4IjNHRsp4k/ItLIvGrfWJVPvdvBpz13s/3EpF7bkDAGAJMgkSZA3n8frreDPK6KMERBojBAJT0qc6vGgpMsf+rwh6nx9kYAhqhbdhPJVWvYcorIo1H6qVTsTFtd13d27dyeTyerqahX8DB069ODBg3l5eaNHj/5Z2csrPv702OZP8xuPFmLkkm5aA2ZuCNkN6D+y5n326TtX5ieDTDLEpACTEQECw5VV+k4rI4+nDeyVmWfSRR2hshF3RuGNA7SlRkYTYZmMERHHZoXfSt8rzKXpoDHQEN0mEaGapPPgZ3Bd94wgl9TMFpwBEopGOa4bv/8z1igkEjiSALC1ZEnCLJMlBLDUDqCWKg4EgaQm6eeITTYJWxjLdm7AO1ON74FAwMtGeV1IJ06cmDdv3pEjh5eXlx+tDO06cKSyqvqP77z14YcfXnxeb+fEvssLtdu7B7tnmIAALoBqVmYECH0K2OJKfUdd49po2gc1+rObqmzbBccBcgBa14+pLSMCCMSRXAnEQJ1ZaXaWZNIVQa1lb7RKN2jNtJAkAXhrGtjEEi668vR67JTJ5qR87pZAtrfXy84QgVs0QKkKncp2ffzx6q3btmek+f/tez1uuW7Uj344OkOXCxYvLug/5PUNVfet169dlfanPToJchqFcNy/V7MXt+qrqrQCbDhRV//AjBdHXHahHQtrIoaURBD/gK+IoGGbhIevKHCcjuuH/zB+lC6gFqsQYfuesThTBPaaHaG5j9ALflSMK4kSicZEIpFotCzHldJ97MknHnzy2UOQu6pKe3GvGbG5xgGIZZvy8nz4JCRW5Awf9eziq0cMT9oOIgJyD0OngxMCBCSNK3PcIk7756nbbFxb/nEEjqAx0FibhoxaCCw2/2f4bSBwa2lWiQspZVFRUX5+vmVZQspAIHDgwIFYLBYORwoLC+++82fpwUAHiAwrwDpXq7a1akcP2fpnYXPWhojec+ANY4Y3NjYePXr0n+4t1VJ6fLCZDElBbXa9SwIdv146ESDmkmyysk1/gkAQuBLctsyyJAQ6ZWr6R/jpv98GqzYz1RsrhFBlBsbYoEGDnnvuOdXdkZ+f//HHH7/yyitCiLlz5/72t7+tj0R+cONNn701h0WPbDvs9MyQ9TZ+XKNvs7OuuOzSSwb1B4Dly5d//vnnatov1R+ErZvOEQkkhq2m4yQq8laO7xWFvkw/Sleyk1oHbEmmn+2shIQLjKGUTQTBVjIe1NzRxdq2Os+BAoaYpkGOD8/N4gzZzC2NlpCnKGRqywcE0hgZ/KwksCoOqqoq57yoqMjn8+Xl5Snru2TJkmQyWVRU1KNHDwAIhUL79u1btGjR3LlzY7GYpmkzZ860bXvSpMkP/OK+2tt++sknn0YP7dztRFwt0Ltzr2vPO7/0nJ7RaHTu3LkPP/ywKs99hRBL+SVWEaGDj3FEhmgwyDT4OVna2G76PX10TUry+mYIGAfTz/bU4N2rY4IEA0BkDLEtqqCJ8o/DTSEMaE5VolKOCKBDYwJ/t8OyhEjlOI6KW04CqsIkKdFp11MfZyRVyRi7//77VSFWbdbv9zuOEw6Hjx07dvjw4f379x85cqQN39IwBg8ePGjgwHPPPTeYlQOazoCsWPTQoYPrN2z4dM2nqSWKtqNwBEHw1pWZE0qZa1FLlwohYmFlQhCgX8NsA7P8ABqAfTKLRgCo47EG+M9d9rObrLDlqpwkQ/7F9VnndxTSactMGq0suXIQUIbjWvH/q4/ZriKwOn+2bFT2qBIpkshZixGs/7uxrXV2ex1T09pFdomooKBg5MiRBw8erK6utizrjTfe8NqOVF+L6qZQWWWfz9ejRw/vmIbX32Tb9o4dO1R3PwIwhkQkJal8dCAQKC0tNU0zOzu7pKRk1apV+/fvb7OsJqE5VYwt1WlWkLKyOACAALCJXBAOcHby3JuL2l0rk3/eb0VtF5rp0TytbG0kCUAAm7HO2h0VGpIKlgyOAY3l+fm52eBIIaRKaZwc7FIbITU2n0Y8u1S0Mod9+/Z97bXXIpGIaojxaj6prylKqJte9TuVS7yqAzQ3WkPKkTV1qVgrOzv71ltv3b9//5f0mVLrQgwBIMM1R+TOiCsk9M7SLu8CUp7i5RKhrstLOmm//3ujydGRlEJdElKFrqfENoiUcFnZF06DY3+lmjwFnqBGcGofmHLzXAJbnq02GADUeaTUXjivny31JpzeuYwve1NR9CvaS9mpIeZJHDJt4prGTTVJFbu+e03GD3uh20gejRmCtOXP+vETibSH1zVorEmeEJCoKT/cel4OspOfkgJZK21CTadhm4sO9DWm8WyUYAX+0aNH58+fv3Pnztra2lgspiq1qj7oHbryVLQivDrrkHo8UAm9l/zyugm8YqKmaYFAoEOHDr17996+fTt8aVMta+PoJgEAZRuoMdAZWEL+ZGVDz4zMfh1JWODZQkR0E2Lqhfr2urS398Z1ho4kAuLITM4BZGvaCGJ1lkpkfk0kDu0d5n4TBFYo3r59++233w7f+NWawEyV6qClAUYEIIy75AUscUdcVx5b84P0TgEh3SbUIwAHlI6cN8y3u15sqE4aHBwBBNISsi2+QZOL7+drW+qk4izOwJXAENWEBsMMAzqYrLQDX3NcrKuyvsmfi2hPFe2ZzzN7ZD2lk7LNhSQBIroSXHlKtlcCME6qLA+orC/ujzo3fphYOtrvR4Hy5NvSBV1z3706MPI98feI02SeGXOlkBJbSCFHueRqX8I1lZPMUREYGCIAcUSDEegIxPu+3QBNShhdSUIinVpkaMeO6NR0ertlrFRRgc7k9RV9HeqnOYYW+p66yKcZoGnIDGQaMh2ZjlxD5sdcrn141LUEKUQbHA9EnTRuDu3NOREzmoZwAxnDrHS4p9TnEtseltd2998zQGeMuN404ck/DZkGpommiYaBuuF9AN1ArgMwBAPvXpksP9LIkI0q9k+90GQaaCmTcB25hjyA2ZyvOCpcefbVg9vxlFHr84OpaY1Uw+zls5reJMjzs4f/1ug4xBiTQng/8sEYJykZo0yDRSyBKn4D5Az/c0+yzuGMJEcAYMhQSgIgIUjnkGbyTmmGqeGUT5OWTQybj1RRSvNBUzX3FKcZAXRGnLG8AB6Iwms7kxwZIOb68defJxynjRw4R+JcyzR43BH/QHHqu3GlMlCLzmFd11t8+PJKjwmM/w9CWntN1CJA+hcJ6fnhhmHMnj27c+fOzz777OrVqwGgS5cus2bNWr58ebdu3TZs2LBgwQK/3z9q1KirrrqKiFasWPFh+QfJZOONN9w4fvz4j1Z9dPjQ4WXvL5NS3v/L+wcMGPDnv/xlzaefHTt+XB22nz17dqdOnZ6d8UxFxSecQVFR0Zw5c1Z9tMowjC5dutw36T5EtF15//2/HHbFFatWffTs8zMNjRHR3DlzN23ePPell3WNSSkN3QgGg1+xfdX75aXb8Cu3H43Fk+10BK3dfqOjX79+N998s/qpjX/RKw4EAvPnz9+yZQsAPProo+PGjdu4ceP8+fPVod5AIHDttdfu27fvzjvvfOyxx9SQhQsX3nfffUKIn//85z6fz5XQ89ze//6D65aVL9938JAjCAC3bN+RmZP7o1t/3DG/05w5cwBg2rRpY8eO3bRp07zX5w8YMKChocHwBUaN+fdVH1fc9KNbDMNwBAHQkCFDysqeWrBgwW/Knq5Y89natWsBYPg1IzXTl/bmH6SUiUSiT+/S2267rb22/9Zbb61bt675h0TOjjBp3bp169ata1/1ok5k33HHHVu3bp04cWK3bt22bNkSjUafeuqpN99889ChQ+qIg2qcfvPNN5UAqa9r1qx58sknQ6FQbm6umi0SiVRUVCQSCfV7GqZp2rZ9xx13bN++/Z577unWrdvWrVuj0eiMGTNefPHFdevWDR48WPm03bt3//Wvf/32229v2rSpR48ea9euRcTnn39e07QxY8Z89NFHiURi8+bNkydPPtMR4H9zseFMOFnfUhfh7Nn+fwG1gv936N+1cAAAAABJRU5ErkJggg==" 
@@ -1273,7 +1283,7 @@ function mesOptGroups(lista,sel=''){
 
 function toast(msg,tp='in'){
   const e=document.createElement('div');e.className=`tos tos-${tp}`;
-  e.innerHTML=`<span>${{ok:'✅',er:'❌',in:'ℹ️'}[tp]||'ℹ️'}</span><span>${msg}</span>`;
+  e.innerHTML=`<span>${{ok:'✅',er:'❌',in:'ℹ️'}[tp]||'ℹ️'}</span><span>${agEsc(msg)}</span>`;
   $('ta').appendChild(e);setTimeout(()=>{e.classList.add('rem');setTimeout(()=>e.remove(),200)},3000);
 }
 function confirm_(t,m,fn){$('cft').textContent=t;$('cfm').textContent=m;$('cfbg').classList.add('op');$('cfok').onclick=()=>{cCF();fn();};}
@@ -1435,7 +1445,7 @@ let fbOk = false;
 let unsubListeners = [];
 
 // Blindagem pós-resgate: evita re-render pesado enquanto o usuário clica/digita.
-const APP_VERSION = 'FINANCEIRO_BURGER_2026_11_09_AGENDA_EXTRATO_V1';
+const APP_VERSION = 'FINANCEIRO_BURGER_2026_11_10_ACESSO_V1';
 let renderTimer = null;
 let pendingRender = null;
 function modalAberto(){
@@ -1484,7 +1494,7 @@ function initFirebase(){
 // ── Fallback localStorage ──────────────────────────────
 const LS_KEY = 'bdr_data_v2_light';
 const LS_VER_KEY = 'bdr_build_version';
-try{ const previous=localStorage.getItem(LS_VER_KEY); if(previous!==APP_VERSION){ if(!['FINANCEIRO_BURGER_2026_10_20_R8','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2','FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V2','FINANCEIRO_BURGER_2026_11_09_AGENDA_GUARD_V1','FINANCEIRO_BURGER_2026_11_09_BACKUP_V2','FINANCEIRO_BURGER_2026_11_09_BUSCA_PERIODOS_V1'].includes(previous))localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
+try{ const previous=localStorage.getItem(LS_VER_KEY); if(previous!==APP_VERSION){ if(!['FINANCEIRO_BURGER_2026_10_20_R8','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2','FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V2','FINANCEIRO_BURGER_2026_11_09_AGENDA_GUARD_V1','FINANCEIRO_BURGER_2026_11_09_BACKUP_V2','FINANCEIRO_BURGER_2026_11_09_BUSCA_PERIODOS_V1','FINANCEIRO_BURGER_2026_11_09_AGENDA_EXTRATO_V1'].includes(previous))localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
 // Não limpa caches antigos a cada abertura; evita trabalho desnecessário no Chrome local.
 // try{ localStorage.removeItem('bdr_data_v1'); }catch(e){}
 // try{ localStorage.removeItem('bdr_data_v2'); }catch(e){}
@@ -2118,14 +2128,14 @@ function rLanc(){
     const isIn=r.rec_desp==='Contas a receber';
     const {parcelada:isParc,recorrente:isRec}=lancSerieTipo(r);
     const statusTxt=r.status==='Concluído'?'Concluído':'Pendente';
-    const parcTag=isParc?`<span class="bg bpu2" style="font-size:10px;margin-left:4px">Parcelado${r.parcela_info?' '+r.parcela_info:''}</span>`:'';
+    const parcTag=isParc?`<span class="bg bpu2" style="font-size:10px;margin-left:4px">Parcelado${r.parcela_info?' '+agEsc(r.parcela_info):''}</span>`:'';
     const recTag=isRec?`<span class="bg bblue" style="font-size:10px;margin-left:4px">Recorrente</span>`:'';
     return`<tr onclick="selRow(this,'${r.id}')" ondblclick="event.stopPropagation();eL('${r.id}')" style="cursor:pointer" title="Clique para selecionar. Duplo clique abre edição.">
       <td class="mono" style="font-size:12px;white-space:nowrap">${fmtD(r.data_competencia)}</td>
       <td class="mono" style="font-size:12px;color:var(--tx2);white-space:nowrap">${fmtD(r.data_vencimento)}</td>
-      <td><span style="font-size:12px;color:var(--tx2)">${r.forma_pagamento||'—'}</span></td>
-      <td class="td-cat" style="font-size:12px;color:var(--tx2)">${r.categoria||'—'}</td>
-      <td class="td-sub" style="font-size:12px;color:var(--tx3)">${r.subcategoria||'—'}</td>
+      <td><span style="font-size:12px;color:var(--tx2)">${agEsc(r.forma_pagamento||'—')}</span></td>
+      <td class="td-cat" style="font-size:12px;color:var(--tx2)">${agEsc(r.categoria||'—')}</td>
+      <td class="td-sub" style="font-size:12px;color:var(--tx3)">${agEsc(r.subcategoria||'—')}</td>
       <td class="trunc td-desc" title="${ccSafe(r.descricao||'')}">${ccSafe(r.descricao||'—')}</td>
       <td class="td-supplier"><span>${ccSafe(r.fornecedor||'—')}</span>${r.referencia?`<small style="display:block;color:var(--tx3)">${ccSafe(r.referencia)}</small>`:''}</td>
       <td class="tr"><span class="${isIn?'vin':'vout'}">${isIn?'+':'−'} ${fmtN(r.valor)}</span></td>
@@ -2153,9 +2163,9 @@ function rLanc(){
         <select id="ftp" class="fc" onchange="rLanc()"><option value="">Tipo: Todos</option><option value="Contas a receber" ${fT==='Contas a receber'?'selected':''}>↑ Vendas</option><option value="Contas a pagar" ${fT==='Contas a pagar'?'selected':''}>↓ Pagar</option></select>
         <select id="fserie" class="fc" onchange="rLanc()" aria-label="Parcelamento ou recorrência"><option value="">Séries: Todas</option><option value="parcelada" ${fSerie==='parcelada'?'selected':''}>Parceladas</option><option value="recorrente" ${fSerie==='recorrente'?'selected':''}>Recorrentes</option></select>
         <select id="fst" class="fc" onchange="rLanc()"><option value="">Status: Todos</option><option value="Concluído" ${fS==='Concluído'?'selected':''}>Concluído</option><option value="Pendente" ${fS==='Pendente'?'selected':''}>Pendente</option></select>
-        <select id="fcat" class="fc" onchange="rLanc()"><option value="">Categoria: Todas</option>${cats.map(c=>`<option value="${c}" ${fC===c?'selected':''}>${c}</option>`).join('')}</select>
-        <select id="fsub" class="fc" onchange="rLanc()"><option value="">Subcategoria: Todas</option>${subs.map(s=>`<option value="${s}" ${fSub===s?'selected':''}>${s}</option>`).join('')}</select>
-        <select id="ffp" class="fc" onchange="rLanc()"><option value="">Forma Pgto: Todas</option>${fps.map(x=>`<option value="${x}" ${fFP===x?'selected':''}>${x}</option>`).join('')}</select>
+        <select id="fcat" class="fc" onchange="rLanc()"><option value="">Categoria: Todas</option>${cats.map(c=>`<option value="${agEsc(c)}" ${fC===c?'selected':''}>${agEsc(c)}</option>`).join('')}</select>
+        <select id="fsub" class="fc" onchange="rLanc()"><option value="">Subcategoria: Todas</option>${subs.map(s=>`<option value="${agEsc(s)}" ${fSub===s?'selected':''}>${agEsc(s)}</option>`).join('')}</select>
+        <select id="ffp" class="fc" onchange="rLanc()"><option value="">Forma Pgto: Todas</option>${fps.map(x=>`<option value="${agEsc(x)}" ${fFP===x?'selected':''}>${agEsc(x)}</option>`).join('')}</select>
         <select id="fmv" class="fc" onchange="setLancMes(this.value)" title="Mês de vencimento" aria-label="Mês de vencimento">${mesOptGroups(mesesV,lancMesSel)}${mesesDisp.includes('sem-vencimento')?`<option value="sem-vencimento" ${lancMesSel==='sem-vencimento'?'selected':''}>Sem vencimento</option>`:''}</select>
         <button class="btn bs" onclick="clearLancFiltros()">Limpar</button>
         <button class="btn bp" onclick="nL()">＋ Novo</button>
@@ -2432,18 +2442,18 @@ window.previewDatas=()=>{
 };
 
 function lancForm(r={}){
-  const fpO=store.cfg.fps.map(f=>`<option value="${f}" ${r.forma_pagamento===f?'selected':''}>${f}</option>`).join('');
+  const fpO=store.cfg.fps.map(f=>`<option value="${agEsc(f)}" ${r.forma_pagamento===f?'selected':''}>${agEsc(f)}</option>`).join('');
   return`<div class="fg">
     <div class="fgi"><label class="fl">Tipo <span class="rq">*</span></label>
       <select id="f-rd" class="fv"><option value="Contas a pagar" ${(r.rec_desp||'Contas a pagar')==='Contas a pagar'?'selected':''}>↓ A Pagar</option><option value="Contas a receber" ${r.rec_desp==='Contas a receber'?'selected':''}>↑ Vendas</option></select></div>
     <div class="fgi"><label class="fl">Status</label>
       <select id="f-st" class="fv"><option value="Pendente" ${(r.status||'Pendente')==='Pendente'?'selected':''}>⏳ Pendente</option><option value="Concluído" ${r.status==='Concluído'?'selected':''}>✓ Concluído</option></select></div>
     <div class="fgi"><label class="fl">Data de Competência <span class="rq">*</span></label>
-      <input id="f-dc" type="date" class="fv" value="${r.data_competencia||today()}" onchange="syncLancDatesForRepeat();previewDatas()"></div>
+      <input id="f-dc" type="date" class="fv" value="${agEsc(r.data_competencia||today())}" onchange="syncLancDatesForRepeat();previewDatas()"></div>
     <div class="fgi"><label class="fl">Data de Vencimento</label>
-      <input id="f-dv" type="date" class="fv" value="${r.data_vencimento||''}" onchange="syncLancDatesForRepeat();previewDatas()"></div>
+      <input id="f-dv" type="date" class="fv" value="${agEsc(r.data_vencimento||'')}" onchange="syncLancDatesForRepeat();previewDatas()"></div>
     <div class="fgi"><label class="fl">${r.id&&lancLinkedSeriesId(r)?(r.parcelamento_id?'Valor da parcela':'Valor mensal'):'Valor'} <span class="rq">*</span></label>
-      <input id="f-vl" type="number" step="0.01" min="0" class="fv" value="${r.valor||''}" placeholder="0,00" oninput="previewDatas()"></div>
+      <input id="f-vl" type="number" step="0.01" min="0" class="fv" value="${agEsc(r.valor||'')}" placeholder="0,00" oninput="previewDatas()"></div>
     <div class="fgi"><label class="fl">Forma de Pagamento</label>
       <select id="f-fp" class="fv"><option value="">— Selecione —</option>${fpO}</select></div>
     <div class="fgi"><label class="fl">Categoria <span class="rq">*</span></label>
@@ -2451,7 +2461,7 @@ function lancForm(r={}){
     <div class="fgi"><label class="fl">Subcategoria</label>
       <select id="f-sub" class="fv"><option value="">— Selecione —</option>${(r.categoria_id||r.categoria)?subOpts(r.categoria_id||r.categoria,r.subcategoria_id||r.subcategoria):''}</select></div>
     <div class="fgi full"><label class="fl">Descrição</label>
-      <input id="f-ds" type="text" class="fv" value="${r.descricao||''}" placeholder="Descrição do lançamento"></div>
+      <input id="f-ds" type="text" class="fv" value="${agEsc(r.descricao||'')}" placeholder="Descrição do lançamento"></div>
     <div class="fgi"><label class="fl" for="f-fornecedor">Fornecedor</label><input id="f-fornecedor" class="fv" maxlength="200" value="${agEsc(r.fornecedor||'')}" placeholder="Nome do fornecedor"></div>
     <div class="fgi"><label class="fl" for="f-ref">Nota fiscal / referência</label><input id="f-ref" class="fv" value="${agEsc(r.referencia||'')}" placeholder="Ex.: número da nota, pedido ou contrato"><div style="font-size:10px;color:var(--tx3)">Diferencie despesas legítimas com os mesmos dados.</div></div>
     ${lancSeriesEditControls(r)}
@@ -2820,10 +2830,10 @@ function rBI(){
         <div style="display:flex;gap:12px;margin-top:7px;font-size:10px;color:var(--tx2)"><span><i style="display:inline-block;width:8px;height:8px;background:var(--ok);border-radius:2px;margin-right:3px"></i>Vendas</span><span><i style="display:inline-block;width:8px;height:8px;background:var(--er);border-radius:2px;margin-right:3px"></i>Saídas</span></div>
       </div>
       <div class="bi-card"><div class="sh">Por Categoria <span>${fTp==='pagar'?'saídas':'vendas'}</span></div>
-        ${topCats.map(([c,v])=>`<div class="bar-row"><div class="bar-lbl" title="${c}">${c}</div><div class="bar-wrap"><div class="bar-fill" style="width:${v/maxCat*100}%;background:${fTp==='pagar'?'var(--er)':'var(--ok)'}"></div></div><div class="bar-val">${fmt(v)}</div></div>`).join('')||'<span style="color:var(--tx3);font-size:12px">Sem dados</span>'}
+        ${topCats.map(([c,v])=>`<div class="bar-row"><div class="bar-lbl" title="${agEsc(c)}">${agEsc(c)}</div><div class="bar-wrap"><div class="bar-fill" style="width:${v/maxCat*100}%;background:${fTp==='pagar'?'var(--er)':'var(--ok)'}"></div></div><div class="bar-val">${fmt(v)}</div></div>`).join('')||'<span style="color:var(--tx3);font-size:12px">Sem dados</span>'}
       </div>
       <div class="bi-card"><div class="sh">Por Subcategoria <span>top 8</span></div>
-        ${topSubs.map(([c,v])=>`<div class="bar-row"><div class="bar-lbl" title="${c}" style="color:var(--tx2)">${c}</div><div class="bar-wrap"><div class="bar-fill" style="width:${v/maxSub*100}%;background:var(--acc)"></div></div><div class="bar-val">${fmt(v)}</div></div>`).join('')||'<span style="color:var(--tx3);font-size:12px">Sem dados</span>'}
+        ${topSubs.map(([c,v])=>`<div class="bar-row"><div class="bar-lbl" title="${agEsc(c)}" style="color:var(--tx2)">${agEsc(c)}</div><div class="bar-wrap"><div class="bar-fill" style="width:${v/maxSub*100}%;background:var(--acc)"></div></div><div class="bar-val">${fmt(v)}</div></div>`).join('')||'<span style="color:var(--tx3);font-size:12px">Sem dados</span>'}
       </div>
       <div class="bi-card full"><div class="sh">Resultado Mensal <span>margem por mês</span></div>
         <div class="tw" style="border:none"><table>
@@ -2845,7 +2855,7 @@ function mkVencidoCard(r){
     +'style="display:flex;align-items:center;justify-content:space-between;'
     +'padding:7px 0;border-bottom:1px solid var(--bd);cursor:pointer;transition:background .12s">'
     +'<div>'
-    +'<div style="font-size:13px">'+(r.descricao||r.categoria||'—')+'</div>'
+    +'<div style="font-size:13px">'+agEsc(r.descricao||r.categoria||'—')+'</div>'
     +'<div style="font-size:11px;color:var(--er)">Venceu '+fmtD(r.data_vencimento)
     +' &nbsp;·&nbsp; <strong>'+dias+'d em atraso</strong></div>'
     +'</div>'
@@ -2899,7 +2909,7 @@ function rDash(){
     const isAmn=r.data_vencimento===amanhaStr;
     const tag=isHj?`<span class="bg bred" style="font-size:10px">HOJE</span>`:isAmn?`<span class="bg byel" style="font-size:10px">AMANHÃ</span>`:'';
     return`<div onclick="abreBaixa('${r.id}')" class="pend-item" style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--bd);cursor:pointer;transition:background .12s">
-      <div><div style="font-size:13px;display:flex;align-items:center;gap:6px">${r.descricao||r.categoria||'—'} ${tag}</div><div style="font-size:11px;color:var(--tx2)">${r.categoria} · ${r.subcategoria||''} · Venc. ${fmtD(r.data_vencimento)}</div></div>
+      <div><div style="font-size:13px;display:flex;align-items:center;gap:6px">${agEsc(r.descricao||r.categoria||'—')} ${tag}</div><div style="font-size:11px;color:var(--tx2)">${agEsc(r.categoria)} · ${agEsc(r.subcategoria||'')} · Venc. ${fmtD(r.data_vencimento)}</div></div>
       <div style="text-align:right"><span class="vout">${fmt(r.valor)}</span><div style="font-size:10px;color:var(--tx3);margin-top:2px">clique p/ baixar</div></div>
     </div>`;
   }
@@ -2917,7 +2927,7 @@ function rDash(){
         <div style="display:flex;gap:12px;margin-top:7px;font-size:10px;color:var(--tx2)"><span><i style="display:inline-block;width:8px;height:8px;background:var(--ok);border-radius:2px;margin-right:3px"></i>Vendas</span><span><i style="display:inline-block;width:8px;height:8px;background:var(--er);border-radius:2px;margin-right:3px"></i>Saídas</span></div>
       </div>
       <div class="bi-card"><div class="sh">Top Despesas <span>${mesLbl(mes)}</span></div>
-        ${topCat.map(([c,v])=>'<div class="bar-row"><div class="bar-lbl" style="font-size:11px" title="'+c+'">'+c+'</div><div class="bar-wrap"><div class="bar-fill" style="width:'+Math.round(v/maxCat*100)+'%;background:var(--er)"></div></div><div class="bar-val" style="color:var(--er);font-size:11px">'+fmt(v)+'</div></div>').join('')||'<span style="color:var(--tx3);font-size:12px">Sem dados</span>'}
+        ${topCat.map(([c,v])=>'<div class="bar-row"><div class="bar-lbl" style="font-size:11px" title="'+agEsc(c)+'">'+agEsc(c)+'</div><div class="bar-wrap"><div class="bar-fill" style="width:'+Math.round(v/maxCat*100)+'%;background:var(--er)"></div></div><div class="bar-val" style="color:var(--er);font-size:11px">'+fmt(v)+'</div></div>').join('')||'<span style="color:var(--tx3);font-size:12px">Sem dados</span>'}
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
@@ -2947,7 +2957,7 @@ function rVG(){
     const mc=receita-cv;const mcPct=receita?mc/receita:0;
     const bep=mcPct>0?cf/mcPct:null;
     const resultado=receita-cv-cf-l.filter(r=>!['Custo dos produtos','Despesas Operacionais','Despesas com pessoal','Outras despesas operacionais'].includes(r.categoria)&&r.rec_desp!=='Contas a receber').reduce((s,r)=>s+r.valor,0);
-    const clientes=store.clientes_mes[m]||0;
+    const clientes=Number(store.clientes_mes[m])||0;
     const tm=clientes?receita/clientes:0;
     return{m,receita,cv,cf,mc,mcPct,bep,resultado,clientes,tm};
   });
@@ -2961,7 +2971,7 @@ function rVG(){
     const l=linhas.find(x=>x.m===m)||{};
     return`<div class="input-row">
       <label>${mesLbl(m)}<span style="margin-left:8px;color:var(--tx3)">Receita: ${fmt(l.receita||0)}</span></label>
-      <input class="clientes-input" data-mes="${m}" type="text" inputmode="numeric" autocomplete="off" value="${store.clientes_mes[m]||''}" placeholder="Nº clientes"
+      <input class="clientes-input" data-mes="${m}" type="text" inputmode="numeric" autocomplete="off" value="${Number(store.clientes_mes[m])||''}" placeholder="Nº clientes"
         oninput="clientesMesDigitado(this,'${m}')" onblur="clientesMesFechar('${m}',this)" onkeydown="if(event.key==='Enter'){this.blur()}">
     </div>`;
   }).join('');
@@ -3102,7 +3112,7 @@ function rCC(){
   const groupCards=groups.map(g=>{
     const n=ccSubsByAny(g.id).length;
     const lanc=ccLancCount(g.id);
-    return `<div class="cc-group-card ${g.id===ccSel?'act':''}" onclick='selCC(${JSON.stringify(g.id)},event)'>
+    return `<div class="cc-group-card ${g.id===ccSel?'act':''}" onclick='selCC(${agEsc(JSON.stringify(g.id))},event)'>
       <div style="min-width:0"><div class="cc-group-name">${ccSafe(g.nome)}</div><div class="cc-group-meta">${n} subcategoria(s) · ${lanc} lançamento(s) · DRE: ${ccSafe(dreClassLabel(dreClassForGroup(g)))}</div></div>
       <div class="cc-count">${n}</div>
     </div>`;
@@ -3123,7 +3133,7 @@ function rCC(){
     <div class="tb">
       <div class="sw-wrap"><span class="si">🔍</span><input id="sw-cc" type="text" placeholder="Buscar grupo ou subcategoria…" value="${ccSafe(sw)}" oninput="debouncR()"></div>
       <button class="btn bp" onclick="nCCGroup()">＋ Novo grupo</button>
-      <button class="btn bs" onclick='nCCSub(${JSON.stringify(ccSel)})' ${selectedGroup?'':'disabled'}>＋ Nova subcategoria</button>
+      <button class="btn bs" onclick='nCCSub(${agEsc(JSON.stringify(ccSel))})' ${selectedGroup?'':'disabled'}>＋ Nova subcategoria</button>
       <button class="btn bs" onclick="ccValidarIds()">🔐 Validar IDs</button>
     </div>
     <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-bottom:12px">
@@ -3143,10 +3153,10 @@ function rCC(){
         <div class="cc-panel-head">
           <div><div class="cc-panel-title">${selected?ccSafe(selected):'Selecione um grupo'}</div><div class="cc-panel-sub">Subcategorias vinculadas · DRE: ${selectedGroup?ccSafe(dreClassLabel(dreClassForGroup(selectedGroup))):'—'}</div></div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
-            ${selectedGroup?`<button class="btn bs btn-s" onclick='eCCGroup(${JSON.stringify(selectedGroup.id)})'>✏️ Editar grupo</button><button class="btn bd2 btn-s" onclick='dCCGroup(${JSON.stringify(selectedGroup.id)})'>🗑️ Excluir grupo</button>`:''}
+            ${selectedGroup?`<button class="btn bs btn-s" onclick='eCCGroup(${agEsc(JSON.stringify(selectedGroup.id))})'>✏️ Editar grupo</button><button class="btn bd2 btn-s" onclick='dCCGroup(${agEsc(JSON.stringify(selectedGroup.id))})'>🗑️ Excluir grupo</button>`:''}
           </div>
         </div>
-        <div class="cc-sub-list">${subRows||'<div class="cc-sub-empty"><div style="font-size:20px;margin-bottom:6px">🏷️</div>Este grupo ainda não tem subcategorias.<br><button class="btn bp" style="margin-top:12px" onclick=\'nCCSub('+JSON.stringify(ccSel)+')\'>＋ Criar subcategoria</button></div>'}</div>
+        <div class="cc-sub-list">${subRows||'<div class="cc-sub-empty"><div style="font-size:20px;margin-bottom:6px">🏷️</div>Este grupo ainda não tem subcategorias.<br><button class="btn bp" style="margin-top:12px" onclick=\'nCCSub('+agEsc(JSON.stringify(ccSel))+')\'>＋ Criar subcategoria</button></div>'}</div>
         <div class="cc-note">Ao editar nomes, o ID permanece o mesmo. O sistema também atualiza os textos antigos em Lançamentos e Agenda para manter Dashboard, DRE, Visão Geral e Fluxo de Caixa coerentes.</div>
       </div>
     </div>`;
@@ -3178,7 +3188,7 @@ function ccSubForm(r={},cat=''){
 </div>`;
 }
 window.nCCGroup=()=>oM('Novo grupo',ccGroupForm(),`<button class="btn bs" onclick="cM()">Cancelar</button><button class="btn bp" onclick="svCCGroup(null)">💾 Salvar</button>`);
-window.eCCGroup=id=>oM('Editar grupo',ccGroupForm(id),`<button class="btn bs" onclick="cM()">Cancelar</button><button class="btn bp" onclick='svCCGroup(${JSON.stringify(id)})'>💾 Atualizar</button>`);
+window.eCCGroup=id=>oM('Editar grupo',ccGroupForm(id),`<button class="btn bs" onclick="cM()">Cancelar</button><button class="btn bp" onclick='svCCGroup(${agEsc(JSON.stringify(id))})'>💾 Atualizar</button>`);
 window.svCCGroup=async function(oldId){
   const nome=$('cc-cat').value.trim();
   const dreId=($('cc-dre')||{}).value||dreInferClass(nome);
@@ -3269,13 +3279,13 @@ function rPat(){
   const tv=data.reduce((s,r)=>s+(+r.valor_aquisicao||0),0),ta=data.reduce((s,r)=>s+calcDep(r).at,0);
   const tot=data.length,pgs=Math.ceil(tot/PS)||1;if(CP>pgs)CP=1;
   const sl=data.slice((CP-1)*PS,CP*PS);
-  const rows=sl.map(r=>{const d=calcDep(r);return`<tr><td>${fmtD(r.data_aquisicao)}</td><td><strong>${r.nome_bem||'—'}</strong></td><td class="tr mono">${fmtN(r.valor_aquisicao)}</td><td style="min-width:100px"><div style="display:flex;justify-content:space-between;font-size:10px;color:var(--tx2);margin-bottom:2px"><span>${fmtN(d.ac)}</span><span>${d.pct.toFixed(0)}%</span></div><div style="height:3px;background:var(--s2);border-radius:2px"><div style="height:100%;width:${Math.min(d.pct,100)}%;background:${d.pct>80?'var(--er)':d.pct>50?'var(--wa)':'var(--acc)'};border-radius:2px"></div></div></td><td class="tr mono" style="color:${d.at>0?'var(--ok)':'var(--tx2)'}">${fmtN(d.at)}</td><td><span class="bg ${r.status==='Ativo'?'bgreen':'bgray'}">${r.status||'Ativo'}</span></td><td><div class="ra"><button class="btn bs btn-s btn-i" onclick="ePat('${r.id}')">✏️</button><button class="btn bd2 btn-s btn-i" onclick="dPat('${r.id}')">🗑️</button></div></td></tr>`;}).join('');
+  const rows=sl.map(r=>{const d=calcDep(r);return`<tr><td>${fmtD(r.data_aquisicao)}</td><td><strong>${agEsc(r.nome_bem||'—')}</strong></td><td class="tr mono">${fmtN(r.valor_aquisicao)}</td><td style="min-width:100px"><div style="display:flex;justify-content:space-between;font-size:10px;color:var(--tx2);margin-bottom:2px"><span>${fmtN(d.ac)}</span><span>${d.pct.toFixed(0)}%</span></div><div style="height:3px;background:var(--s2);border-radius:2px"><div style="height:100%;width:${Math.min(d.pct,100)}%;background:${d.pct>80?'var(--er)':d.pct>50?'var(--wa)':'var(--acc)'};border-radius:2px"></div></div></td><td class="tr mono" style="color:${d.at>0?'var(--ok)':'var(--tx2)'}">${fmtN(d.at)}</td><td><span class="bg ${r.status==='Ativo'?'bgreen':'bgray'}">${agEsc(r.status||'Ativo')}</span></td><td><div class="ra"><button class="btn bs btn-s btn-i" onclick="ePat('${r.id}')">✏️</button><button class="btn bd2 btn-s btn-i" onclick="dPat('${r.id}')">🗑️</button></div></td></tr>`;}).join('');
   $('content').innerHTML=`<div class="kpis"><div class="kpi" style="--kc:var(--in)"><div class="kpi-l">Valor Aquisição</div><div class="kpi-v">${fmt(tv)}</div><div class="kpi-s">${data.length} bens</div></div><div class="kpi" style="--kc:var(--er)"><div class="kpi-l">Depreciação Acum.</div><div class="kpi-v">${fmt(tv-ta)}</div></div><div class="kpi" style="--kc:var(--ok)"><div class="kpi-l">Valor Atual</div><div class="kpi-v">${fmt(ta)}</div></div><div class="kpi" style="--kc:var(--acc)"><div class="kpi-l">Ativos</div><div class="kpi-v">${data.filter(r=>r.status==='Ativo').length}</div></div></div>
-    <div class="tb"><div class="sw-wrap"><span class="si">🔍</span><input id="sw-pat" type="text" placeholder="Buscar bem…" value="${sw}" oninput="debouncR()"></div><button class="btn bp" onclick="nPat()">＋ Novo Bem</button></div>
+    <div class="tb"><div class="sw-wrap"><span class="si">🔍</span><input id="sw-pat" type="text" placeholder="Buscar bem…" value="${agEsc(sw)}" oninput="debouncR()"></div><button class="btn bp" onclick="nPat()">＋ Novo Bem</button></div>
     <div class="tw"><table><thead><tr><th>Aquisição</th><th>Nome do Bem</th><th class="tr">Valor Orig.</th><th>Depreciação</th><th class="tr">Valor Atual</th><th>Status</th><th style="width:68px"></th></tr></thead><tbody>${rows||`<tr><td colspan="7"><div class="es"><div class="em">🏢</div><h3>Nenhum bem</h3></div></td></tr>`}</tbody></table></div>${mkPag(CP,pgs,'pgPt')}`;
 }
 window.pgPt=p=>{CP=p;rPat();}
-function patForm(r={}){return`<div class="fg"><div class="fgi full"><label class="fl">Nome do Bem <span class="rq">*</span></label><input id="pt-nm" type="text" class="fv" value="${r.nome_bem||''}"></div><div class="fgi"><label class="fl">Data Aquisição</label><input id="pt-da" type="date" class="fv" value="${r.data_aquisicao||today()}"></div><div class="fgi"><label class="fl">Valor Aquisição (R$)</label><input id="pt-va" type="number" step="0.01" class="fv" value="${r.valor_aquisicao||''}"></div><div class="fgi"><label class="fl">Vida Útil (anos)</label><input id="pt-vu" type="number" class="fv" value="${r.vida_util_anos||''}"></div><div class="fgi"><label class="fl">Status</label><select id="pt-st" class="fv"><option value="Ativo" ${(r.status||'Ativo')==='Ativo'?'selected':''}>Ativo</option><option value="Baixado" ${r.status==='Baixado'?'selected':''}>Baixado</option><option value="Vendido" ${r.status==='Vendido'?'selected':''}>Vendido</option></select></div><div class="fgi"><label class="fl">Centro de Custo</label><input id="pt-cc" type="text" class="fv" value="${r.centro_custo||''}"></div></div>`;}
+function patForm(r={}){return`<div class="fg"><div class="fgi full"><label class="fl">Nome do Bem <span class="rq">*</span></label><input id="pt-nm" type="text" class="fv" value="${agEsc(r.nome_bem||'')}"></div><div class="fgi"><label class="fl">Data Aquisição</label><input id="pt-da" type="date" class="fv" value="${agEsc(r.data_aquisicao||today())}"></div><div class="fgi"><label class="fl">Valor Aquisição (R$)</label><input id="pt-va" type="number" step="0.01" class="fv" value="${agEsc(r.valor_aquisicao||'')}"></div><div class="fgi"><label class="fl">Vida Útil (anos)</label><input id="pt-vu" type="number" class="fv" value="${agEsc(r.vida_util_anos||'')}"></div><div class="fgi"><label class="fl">Status</label><select id="pt-st" class="fv"><option value="Ativo" ${(r.status||'Ativo')==='Ativo'?'selected':''}>Ativo</option><option value="Baixado" ${r.status==='Baixado'?'selected':''}>Baixado</option><option value="Vendido" ${r.status==='Vendido'?'selected':''}>Vendido</option></select></div><div class="fgi"><label class="fl">Centro de Custo</label><input id="pt-cc" type="text" class="fv" value="${agEsc(r.centro_custo||'')}"></div></div>`;}
 window.nPat=()=>oM('Novo Bem',patForm(),`<button class="btn bs" onclick="cM()">Cancelar</button><button class="btn bp" onclick="svPat(null)">💾 Salvar</button>`);
 window.ePat=id=>{const r=store.patrimonio.find(x=>x.id===id);oM('Editar Bem',patForm(r),`<button class="btn bs" onclick="cM()">Cancelar</button><button class="btn bp" onclick="svPat('${id}')">💾 Atualizar</button>`);};
 window.svPat=async function(id){const d={nome_bem:$('pt-nm').value.trim(),data_aquisicao:$('pt-da').value,valor_aquisicao:parseFloat($('pt-va').value)||0,vida_util_anos:parseInt($('pt-vu').value)||0,status:$('pt-st').value,centro_custo:$('pt-cc').value.trim()};if(!d.nome_bem){toast('Nome obrigatório','er');return;}if(id){const i=store.patrimonio.findIndex(x=>x.id===id);if(i>=0)store.patrimonio[i]={...store.patrimonio[i],...d};await fbSet('patrimonio',id,d);lsSave();toast('Atualizado!','ok');}else{const nid=await fbAdd('patrimonio',{...d})||uid();store.patrimonio.push({id:nid,...d});lsSave();toast('Cadastrado!','ok');}cM();rPat();};
@@ -3592,8 +3602,9 @@ window.receberBackupArquivo=async function(el){
 // CONFIG
 // ══════════════════════════════════════════════
 function rCfg(){
-  const mkL=(arr,fn)=>arr.map((v,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--bd)"><span style="flex:1;font-size:13px">${v}</span><button class="btn bd2 btn-s btn-i" onclick="${fn}(${i})">✕</button></div>`).join('');
+  const mkL=(arr,fn)=>arr.map((v,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--bd)"><span style="flex:1;font-size:13px">${agEsc(v)}</span><button class="btn bd2 btn-s btn-i" onclick="${fn}(${i})">✕</button></div>`).join('');
   $('content').innerHTML=`
+    <div class="bi-card" style="margin-bottom:12px"><div class="sh">Usuários e acesso</div><p>Usuário atual: ${agEsc(FinAuth.current()?.username||'')}</p><div class="backup-actions"><button class="btn bs" onclick="FinAuth.passwordForm()">Alterar minha senha</button>${FinAuth.current()?.role==='admin'?'<button class="btn bp" onclick="FinAuth.manage()">Gerenciar usuários</button>':''}<button class="btn bs" onclick="FinAuth.logout()">Sair</button></div></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div class="bi-card"><div class="sh">Instituições Financeiras</div>${mkL(store.cfg.inst,'rmInst')}<div style="display:flex;gap:7px;margin-top:9px"><input id="ni-i" type="text" class="fv" placeholder="Nova instituição" style="flex:1"><button class="btn bp" onclick="addInst()">+</button></div></div>
       <div class="bi-card"><div class="sh">Formas de Pagamento</div>${mkL(store.cfg.fps,'rmFP')}<div style="display:flex;gap:7px;margin-top:9px"><input id="fp-i" type="text" class="fv" placeholder="Nova forma" style="flex:1"><button class="btn bp" onclick="addFP()">+</button></div></div>
@@ -3636,11 +3647,11 @@ window.abreBaixa=function(id){
   const r=store.lancamentos.find(x=>x.id===id);
   if(!r) return;
   financeBaseline={...finExpected('lancamentos',id)};
-  const fpO=store.cfg.fps.map(f=>`<option value="${f}" ${r.forma_pagamento===f?'selected':''}>${f}</option>`).join('');
+  const fpO=store.cfg.fps.map(f=>`<option value="${agEsc(f)}" ${r.forma_pagamento===f?'selected':''}>${agEsc(f)}</option>`).join('');
   oM('💰 Dar Baixa — '+( r.descricao||r.categoria||'Lançamento'),
   `<div style="background:var(--s2);border-radius:8px;padding:14px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
-    <div><span style="color:var(--tx2);font-size:11px">CATEGORIA</span><div style="margin-top:3px">${r.categoria||'—'}</div></div>
-    <div><span style="color:var(--tx2);font-size:11px">SUBCATEGORIA</span><div style="margin-top:3px">${r.subcategoria||'—'}</div></div>
+    <div><span style="color:var(--tx2);font-size:11px">CATEGORIA</span><div style="margin-top:3px">${agEsc(r.categoria||'—')}</div></div>
+    <div><span style="color:var(--tx2);font-size:11px">SUBCATEGORIA</span><div style="margin-top:3px">${agEsc(r.subcategoria||'—')}</div></div>
     <div><span style="color:var(--tx2);font-size:11px">VENCIMENTO</span><div style="margin-top:3px;color:var(--wa)">${fmtD(r.data_vencimento)}</div></div>
     <div><span style="color:var(--tx2);font-size:11px">VALOR</span><div style="margin-top:3px;color:var(--er);font-family:'DM Mono',monospace;font-size:15px;font-weight:700">${fmt(r.valor)}</div></div>
     <div style="grid-column:1/-1"><span style="color:var(--tx2);font-size:11px">DESCRIÇÃO</span><div style="margin-top:3px">${r.descricao||'—'}</div></div>
@@ -3651,7 +3662,7 @@ window.abreBaixa=function(id){
     <div class="fgi"><label class="fl">Forma de Pagamento</label>
       <select id="bx-fp" class="fv"><option value="">— Selecione —</option>${fpO}</select></div>
     <div class="fgi full"><label class="fl">Observação</label>
-      <input id="bx-obs" type="text" class="fv" value="${r.descricao||''}" placeholder="Confirmar ou alterar descrição"></div>
+      <input id="bx-obs" type="text" class="fv" value="${agEsc(r.descricao||'')}" placeholder="Confirmar ou alterar descrição"></div>
   </div>`,
   `<button class="btn bs" onclick="cM()">Cancelar</button>
    <button class="btn bp" onclick="confirmarBaixa('${id}')">✅ Confirmar Baixa</button>`);
@@ -3968,7 +3979,7 @@ function agendaForm(r={},presetTipo='',presetData=''){
     </div>
     <div class="fgi">
       <label class="fl">Valor recebido <span class="rq">*</span></label>
-      <input id="ag-valor" type="number" step="0.01" min="0" class="fv" value="${r.valor||''}" placeholder="0,00">
+      <input id="ag-valor" type="number" step="0.01" min="0" class="fv" value="${agEsc(r.valor||'')}" placeholder="0,00">
     </div>
     <div class="fgi full">
       <label class="fl">Origem <span class="rq">*</span></label>
@@ -5649,52 +5660,123 @@ window.financeReconnectAll=function(){window.BurgerCashRunner.reconnect();window
   root.BurgerBackupCapture={capture,encoded,verify,checksum:digest};
 })(typeof window==='undefined'?globalThis:window);
 
-// ── INIT ────────────────────────────────────────────────
-(async function(){
-  // Limpa caches antigos pesados/corrompidos e evita renderizar milhares de lançamentos antes do Firebase responder.
-  try{ lsLoad(); }catch(e){ console.warn('Cache leve indisponível', e); }
-  $('content').innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--tx2);gap:8px"><div style="width:16px;height:16px;border:2px solid var(--bd);border-top-color:var(--acc);border-radius:50%;animation:spin .6s linear infinite"></div>Conectando…</div>`;
-
-  const sdkOk = await ensureFirebaseScripts();
-  if(!sdkOk){
-    fbOk=false;
-    setStatus('● Firebase SDK indisponível','var(--wa)');
-  } else {
-    initFirebase();
-    if(fbOk)BurgerCashIntegration.start();
+(function(root){
+  'use strict';
+  let auth=null,profile=null,profileUnsub=null,epoch=0,started=false,busy=false;
+  const username=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+  const validName=v=>/^[a-z0-9][a-z0-9._-]{2,31}$/.test(v);
+  const msg=(v,bad=true)=>{const el=document.getElementById('fin-auth-message');if(el){el.textContent=v||'';el.style.color=bad?'#ffb1a8':'#a5e5bd';}};
+  const error=e=>({'auth/invalid-login-credentials':'Nome ou senha incorretos.','auth/invalid-credential':'Nome ou senha incorretos.','auth/wrong-password':'Nome ou senha incorretos.','auth/user-not-found':'Nome ou senha incorretos.','auth/too-many-requests':'Muitas tentativas. Aguarde e tente novamente.','auth/network-request-failed':'Não foi possível conectar. Confira a internet.'}[e?.code]||e?.message||'Não foi possível concluir. Tente novamente.');
+  function gate(text=''){
+    document.getElementById('app').style.display='none';document.getElementById('fin-auth-gate').hidden=false;
+    const pass=document.getElementById('fin-auth-password');if(pass)pass.value='';msg(text);
   }
-  if(fbOk){
+  function startApp(){
+    document.getElementById('fin-auth-gate').hidden=true;document.getElementById('app').style.display='';
+    if(started)return;started=true;
+    try{lsLoad();}catch(e){console.warn('Cache indisponível',e);}
+    BurgerCashIntegration.start();
+    Promise.race([loadAll(),new Promise(resolve=>setTimeout(()=>resolve(false),12000))]).then(ok=>{if(ok)render(CM||'visaogeral');else setStatus('● Aguardando sincronização','var(--wa)');}).catch(()=>setStatus('● Sem conexão','var(--er)'));
+  }
+  async function onUser(user){
+    const version=++epoch;if(profileUnsub){profileUnsub();profileUnsub=null;}profile=null;
+    if(!user){gate();return;}
+    gate('Confirmando acesso…');
     try{
-      const ok = await Promise.race([
-        loadAll(),
-        new Promise(resolve=>setTimeout(()=>resolve(false),12000))
-      ]);
-      if(ok){
-        render(CM||'visaogeral');
-        return;
-      }
-      setStatus('● Firebase demorou','var(--wa)');
-    }catch(e){
-      setStatus('● offline','var(--er)');
-      console.warn('Falha no carregamento inicial:', e);
-    }
-  } else {
-    setStatus('● local (sem Firebase)','var(--wa)');
+      const ref=db.collection('burger_finance_access').doc(user.uid),snap=await ref.get({source:'server'});
+      if(version!==epoch)return;
+      if(!snap.exists||snap.data().active!==true||!['admin','user'].includes(snap.data().role)){await auth.signOut();gate('Este acesso não está autorizado.');return;}
+      profile={...snap.data(),uid:user.uid};
+      profileUnsub=ref.onSnapshot({includeMetadataChanges:true},x=>{
+        if(version!==epoch||x.metadata.fromCache)return;
+        if(!x.exists||x.data().active!==true){gate('Seu acesso foi removido.');void auth.signOut().finally(()=>location.reload());}
+        else profile={...x.data(),uid:user.uid};
+      },()=>{gate('Não foi possível confirmar seu acesso.');void auth.signOut().finally(()=>location.reload());});
+      startApp();
+    }catch(e){if(version!==epoch)return;await auth.signOut().catch(()=>{});gate(error(e));}
   }
+  async function login(e){
+    e.preventDefault();if(busy)return;const name=username(document.getElementById('fin-auth-user').value),pass=document.getElementById('fin-auth-password').value;
+    if(!validName(name)||!pass){msg('Informe seu nome de usuário e senha.');return;}
+    busy=true;msg('Entrando…',false);
+    try{const login=await db.collection('burger_finance_login').doc(name).get({source:'server'});if(!login.exists||!login.data().email)throw Error('Nome ou senha incorretos.');await auth.signInWithEmailAndPassword(login.data().email,pass);}
+    catch(e){msg(error(e));}finally{busy=false;document.getElementById('fin-auth-password').value='';}
+  }
+  async function recover(){
+    const name=username(document.getElementById('fin-auth-user').value);if(name!=='marcelo'){msg('Peça ao administrador para redefinir sua senha.');return;}
+    try{const entry=await db.collection('burger_finance_login').doc(name).get({source:'server'});if(!entry.exists)throw Error('Acesso indisponível.');await auth.sendPasswordResetEmail(entry.data().email);msg('Confira o e-mail de recuperação do administrador.',false);}catch(e){msg(error(e));}
+  }
+  function canLeave(){return !financeSync.pending&&!root.BurgerBankUI?.state?.pending?.length&&!modalAberto();}
+  async function logout(){
+    if(!canLeave()){toast('Conclua a edição ou importação pendente antes de sair.','er');return;}
+    // A cópia offline pode conter importação pendente em outra aba. Não apagá-la.
+    gate('Saindo…');await auth.signOut();location.reload();
+  }
+  function current(){return profile;}
+  function passwordForm(){oM('Alterar minha senha',`<div class="fg"><div class="fgi full"><label class="fl">Senha atual</label><input id="auth-old" class="fv" type="password" autocomplete="current-password"></div><div class="fgi full"><label class="fl">Nova senha</label><input id="auth-new" class="fv" type="password" autocomplete="new-password" minlength="8"></div><div class="fgi full"><label class="fl">Repita a nova senha</label><input id="auth-repeat" class="fv" type="password" autocomplete="new-password" minlength="8"></div></div>`,`<button class="btn bs" onclick="cM()">Cancelar</button><button class="btn bp" onclick="FinAuth.changePassword()">Salvar senha</button>`,true);}
+  async function changePassword(){
+    const old=$('auth-old').value,p=$('auth-new').value,repeat=$('auth-repeat').value;if(p.length<8||p!==repeat){toast('Use ao menos 8 caracteres e confirme a nova senha.','er');return;}
+    try{const user=auth.currentUser;if(!user?.email)throw Error('Entre novamente para alterar sua senha.');const credential=firebase.auth.EmailAuthProvider.credential(user.email,old);await user.reauthenticateWithCredential(credential);await user.updatePassword(p);cM();toast('Senha alterada.','ok');}catch(e){toast(error(e),'er');}
+  }
+  async function list(){
+    if(profile?.role!=='admin')throw Error('Somente o administrador gerencia acessos.');
+    const snap=await db.collection('burger_finance_access').get({source:'server'});if(snap.metadata.fromCache||snap.metadata.hasPendingWrites)throw Error('Aguarde a confirmação do servidor.');
+    return snap.docs.map(d=>({uid:d.id,...d.data()})).sort((a,b)=>a.username.localeCompare(b.username));
+  }
+  async function manage(){
+    try{const users=await list();const lines=users.map(u=>`<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--bd)"><span style="flex:1">${agEsc(u.username)} ${u.role==='admin'?'· Administrador':''}</span>${u.role==='user'?`<button class="btn bs btn-s" onclick='FinAuth.resetForm(${JSON.stringify(u.username)})'>Trocar senha</button><button class="btn bd2 btn-s" onclick='FinAuth.remove(${JSON.stringify(u.username)})'>Excluir acesso</button>`:''}</div>`).join('');
+      oM('Usuários',`<p>Crie um nome e uma senha para cada pessoa. O administrador pode retirar o acesso quando necessário.</p>${lines}`,`<button class="btn bs" onclick="cM()">Fechar</button><button class="btn bp" onclick="FinAuth.newForm()">＋ Novo usuário</button>`,true);
+    }catch(e){toast(error(e),'er');}
+  }
+  function newForm(){oM('Novo usuário',`<div class="fg"><div class="fgi full"><label class="fl">Nome de usuário</label><input id="auth-new-user" class="fv" autocomplete="off" maxlength="32" placeholder="Ex.: equipe.caixa"><small>Letras, números, ponto, hífen ou sublinhado; mínimo de 3 caracteres.</small></div><div class="fgi full"><label class="fl">Senha inicial</label><input id="auth-new-pass" class="fv" type="password" autocomplete="new-password" minlength="8"></div></div>`,`<button class="btn bs" onclick="FinAuth.manage()">Voltar</button><button class="btn bp" onclick="FinAuth.create()">Criar acesso</button>`,true);}
+  function resetForm(name){if(!validName(name)||name==='marcelo')return;root.__finResetUser=name;oM('Trocar senha de '+agEsc(name),`<div class="fgi full"><label class="fl">Nova senha</label><input id="auth-reset-pass" class="fv" type="password" autocomplete="new-password" minlength="8"><small>Após a alteração, a senha anterior deixa de dar acesso.</small></div>`,`<button class="btn bs" onclick="FinAuth.manage()">Voltar</button><button class="btn bp" onclick="FinAuth.reset()">Salvar senha</button>`,true);}
+  async function secondaryAccount(password){
+    const name='burger-create-'+crypto.randomUUID(),app=firebase.initializeApp(FIREBASE_CONFIG,name),temp=app.auth();
+    await temp.setPersistence(firebase.auth.Auth.Persistence.NONE);
+    const login='burger.'+crypto.randomUUID().replace(/-/g,'')+'@acessos.financeiro.invalid';
+    try{const result=await temp.createUserWithEmailAndPassword(login,password);return {app,temp,user:result.user,email:login};}catch(e){await app.delete().catch(()=>{});throw e;}
+  }
+  async function createOrReset(name,password,replace){
+    if(profile?.role!=='admin')throw Error('Somente o administrador gerencia acessos.');
+    if(!validName(name)||name==='marcelo')throw Error('Nome de usuário inválido ou reservado.');
+    if(password.length<8)throw Error('A senha deve ter ao menos 8 caracteres.');
+    const directory=db.collection('burger_finance_login').doc(name),before=await directory.get({source:'server'});
+    if(replace&&!before.exists)throw Error('Usuário não encontrado.');if(!replace&&before.exists)throw Error('Este nome de usuário já existe.');
+    const created=await secondaryAccount(password);
+    try{
+      const uid=created.user.uid,oldUid=before.exists?before.data().uid:null;
+      await db.runTransaction(async tx=>{const now=await tx.get(directory);if((now.exists?now.data().uid:null)!==oldUid)throw Error('O usuário foi alterado. Atualize e tente novamente.');
+        if(oldUid){const old=db.collection('burger_finance_access').doc(oldUid),snap=await tx.get(old);if(!snap.exists||snap.data().role!=='user')throw Error('Acesso anterior indisponível.');tx.delete(old);}
+        tx.set(db.collection('burger_finance_access').doc(uid),{username:name,role:'user',active:true});tx.set(directory,{uid,email:created.email});
+      });
+    }finally{await created.temp.signOut().catch(()=>{});await created.app.delete().catch(()=>{});}
+  }
+  async function create(){if(busy)return;const name=username($('auth-new-user').value),pass=$('auth-new-pass').value;busy=true;try{await createOrReset(name,pass,false);toast('Usuário criado.','ok');await manage();}catch(e){toast(error(e),'er');}finally{busy=false;}}
+  async function reset(){if(busy)return;const name=root.__finResetUser,pass=$('auth-reset-pass').value;busy=true;try{await createOrReset(name,pass,true);toast('Senha alterada.','ok');await manage();}catch(e){toast(error(e),'er');}finally{busy=false;}}
+  async function remove(name){
+    if(profile?.role!=='admin'||!validName(name)||name==='marcelo')return;
+    if(!confirm('Excluir o acesso de '+name+'? Essa pessoa deixará de acessar o Financeiro.'))return;
+    try{await db.runTransaction(async tx=>{const ref=db.collection('burger_finance_login').doc(name),dir=await tx.get(ref);if(!dir.exists)throw Error('Usuário não encontrado.');const target=db.collection('burger_finance_access').doc(dir.data().uid),p=await tx.get(target);if(!p.exists||p.data().role!=='user')throw Error('Acesso indisponível.');tx.delete(ref);tx.delete(target);});toast('Acesso excluído.','ok');await manage();}catch(e){toast(error(e),'er');}
+  }
+  async function init(){
+    gate('Conectando…');if(!await ensureFirebaseScripts())throw Error('Não foi possível carregar a conexão.');
+    await loadScriptSafe('https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js',8000);initFirebase();if(!fbOk)throw Error('Não foi possível conectar ao Firebase.');
+    auth=firebase.auth();auth.languageCode='pt-BR';await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+    document.getElementById('fin-auth-form').addEventListener('submit',login);document.getElementById('fin-auth-recover').addEventListener('click',recover);
+    auth.onAuthStateChanged(user=>{void onUser(user);for(const id of ['fin-auth-user','fin-auth-password','fin-auth-submit','fin-auth-recover'])document.getElementById(id).disabled=false;},()=>gate('Não foi possível verificar o acesso.'));
+  }
+  root.FinAuth={init,logout,current,passwordForm,changePassword,manage,newForm,create,resetForm,reset,remove};
+})(window);
 
-  if(!(store.lancamentos||[]).length){
-    $('content').innerHTML=`<div class="es"><div class="em">⚠️</div><h3>Firebase ainda não carregou</h3><p>O sistema abriu sem travar, mas ainda não recebeu os lançamentos. Aguarde alguns segundos e recarregue se necessário.</p></div>`;
-    return;
-  }
-  render(CM||'visaogeral');
-})();
+// Acesso individual e sincronização iniciam somente após autorização.
+FinAuth.init().catch(e=>{const m=document.getElementById('fin-auth-message');if(m)m.textContent=e.message||'Não foi possível conectar.';});
 </script>
 
 <script type="application/json" id="financeiro-release">{
-  "build": "FINANCEIRO_BURGER_2026_11_09_AGENDA_EXTRATO_V1",
+  "build": "FINANCEIRO_BURGER_2026_11_10_ACESSO_V1",
   "base": {
     "url": "https://github.com/marcelomreidogado-cmd/financeiro-burgerdorei/blob/main/index.html",
-    "sha256": "225fd143bcd766406ae3df9ad34b5003979e33f0efecd0f49f9434e1d01eb2ee"
+    "sha256": "92ff98cbf8ff2ca8e97eda290ff0472374ca91fa585b20b820675346d91f6676"
   },
   "changelog": [
     "Transações para criação, alteração, baixa e exclusão financeira; conflitos exigem revisão.",
@@ -5725,7 +5807,8 @@ window.financeReconnectAll=function(){window.BurgerCashRunner.reconnect();window
     "Renomeação do plano de contas atualiza vínculos em lotes e informa falhas parciais.",
     "Backup ampliado de Financeiro, extratos, caixa diário e motoboys; conferência de arquivos v1 e v2 somente leitura.",
     "Lançamentos: busca por todos os meses ou meses escolhidos e filtros para parceladas, recorrentes e vencimentos futuros.",
-    "Agenda e Fluxo usam todos os créditos realmente presentes nos extratos; transferências entre contas são separadas e o histórico manual é preservado sem compor totais."
+    "Agenda e Fluxo usam todos os créditos realmente presentes nos extratos; transferências entre contas são separadas e o histórico manual é preservado sem compor totais.",
+    "Acesso por usuário e senha, recuperação do administrador e gerenciamento de acessos; exige regras de autenticação correspondentes no Firestore."
   ],
   "limites": [
     "É necessário fechar e atualizar todas as abas antigas para que os usuários consigam gravar com as regras atualizadas.",
@@ -5733,7 +5816,8 @@ window.financeReconnectAll=function(){window.BurgerCashRunner.reconnect();window
     "Auditoria interna não executa com todos os navegadores fechados.",
     "Na versão R8, a gravação autorizada dos extratos foi confirmada em produção; as regras então vigentes não haviam sido alteradas. Os testes de falha, concorrência e reconexão usaram somente o emulador.",
     "Recuperação aditiva ainda não está disponível. O backup v1 não contém extratos nem Caixa; o v2 inclui somente caixa diário e motoboys, não os demais módulos do Caixa. As leituras entre projetos não são atômicas.",
-    "Fechamentos incompletos ou com registros existentes são encaminhados para conferência; alterações posteriores no Caixa são sinalizadas na Auditoria."
+    "Fechamentos incompletos ou com registros existentes são encaminhados para conferência; alterações posteriores no Caixa são sinalizadas na Auditoria.",
+    "A revogação remove o acesso ao Financeiro; arquivos baixados e dados já armazenados no dispositivo não são apagados automaticamente."
   ],
   "publicacao": [
     "Publicação do index.html pelo fluxo do repositório para o Firebase Hosting.",
