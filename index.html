@@ -6,9 +6,9 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_11_09_BUSCA_PERIODOS_V1">
+<meta name="financeiro-build" content="FINANCEIRO_BURGER_2026_11_09_AGENDA_EXTRATO_V1">
 <script>
-window.__BUILD_ID='FINANCEIRO_BURGER_2026_11_09_BUSCA_PERIODOS_V1';
+window.__BUILD_ID='FINANCEIRO_BURGER_2026_11_09_AGENDA_EXTRATO_V1';
 (function(){
   try{
     if('serviceWorker' in navigator){
@@ -1435,7 +1435,7 @@ let fbOk = false;
 let unsubListeners = [];
 
 // Blindagem pós-resgate: evita re-render pesado enquanto o usuário clica/digita.
-const APP_VERSION = 'FINANCEIRO_BURGER_2026_11_09_BUSCA_PERIODOS_V1';
+const APP_VERSION = 'FINANCEIRO_BURGER_2026_11_09_AGENDA_EXTRATO_V1';
 let renderTimer = null;
 let pendingRender = null;
 function modalAberto(){
@@ -1484,7 +1484,7 @@ function initFirebase(){
 // ── Fallback localStorage ──────────────────────────────
 const LS_KEY = 'bdr_data_v2_light';
 const LS_VER_KEY = 'bdr_build_version';
-try{ const previous=localStorage.getItem(LS_VER_KEY); if(previous!==APP_VERSION){ if(!['FINANCEIRO_BURGER_2026_10_20_R8','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2','FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V2','FINANCEIRO_BURGER_2026_11_09_AGENDA_GUARD_V1','FINANCEIRO_BURGER_2026_11_09_BACKUP_V2'].includes(previous))localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
+try{ const previous=localStorage.getItem(LS_VER_KEY); if(previous!==APP_VERSION){ if(!['FINANCEIRO_BURGER_2026_10_20_R8','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2','FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V2','FINANCEIRO_BURGER_2026_11_09_AGENDA_GUARD_V1','FINANCEIRO_BURGER_2026_11_09_BACKUP_V2','FINANCEIRO_BURGER_2026_11_09_BUSCA_PERIODOS_V1'].includes(previous))localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
 // Não limpa caches antigos a cada abertura; evita trabalho desnecessário no Chrome local.
 // try{ localStorage.removeItem('bdr_data_v1'); }catch(e){}
 // try{ localStorage.removeItem('bdr_data_v2'); }catch(e){}
@@ -3300,7 +3300,7 @@ function fluxoItems(mes=fluxoMes){
     id:r.id,source:'lancamento',tipo:'pagar',data:agLancData(r),descricao:r.descricao||r.categoria||'Lançamento',valor:+r.valor||0,status:isDone(r)?'Baixado':'Aberto',categoria:r.categoria||'',subcategoria:r.subcategoria||'',origem:'Lançamentos'
   }));
   const man=bkCombinedReceipts(mes).map(r=>({
-    id:r.id,source:r.source,tipo:'receber',data:r.data,descricao:agOrigem(r)||'Recebimento manual',valor:+r.valor||0,status:'Baixado',categoria:r.categoria||'',subcategoria:r.subcategoria||'',origem:'Agenda Financeira'
+    id:r.id,source:r.source,tipo:'receber',data:r.data,descricao:r.descricao||agOrigem(r)||'Crédito do extrato',valor:+r.valor||0,status:'Baixado',categoria:r.categoria||'',subcategoria:r.subcategoria||'',origem:'Extrato bancário'
   }));
   return [...lanc,...man].filter(x=>x.data).sort((a,b)=>(a.data||'').localeCompare(b.data||'')||(a.tipo||'').localeCompare(b.tipo||''));
 }
@@ -3315,8 +3315,10 @@ window.salvarSaldoInicialFluxo=async function(){
   if(fbOk) try{await db.collection('config').doc('main').set({saldoInicialMes:store.cfg.saldoInicialMes},{merge:true});}catch(e){console.warn(e)}
 };
 function rFluxo(){
+  const coverage=bkCoverage(fluxoMes);
   const itens=fluxoItems(fluxoMes);
   const saldoInicial=Object.hasOwn(store.cfg?.saldoInicialMes||{},fluxoMes)?+store.cfg.saldoInicialMes[fluxoMes]:(bkOpeningBalance(fluxoMes)??0);
+  const saldoDisponivel=coverage.available&&(Object.hasOwn(store.cfg?.saldoInicialMes||{},fluxoMes)||bkOpeningBalance(fluxoMes)!==null);
   const recebido=itens.filter(x=>x.tipo==='receber').reduce((s,x)=>s+x.valor,0);
   const pagPrev=itens.filter(x=>x.tipo==='pagar').reduce((s,x)=>s+x.valor,0);
   const pagReal=itens.filter(x=>x.tipo==='pagar'&&x.status==='Baixado').reduce((s,x)=>s+x.valor,0);
@@ -3338,7 +3340,7 @@ function rFluxo(){
     if(saldo<pior.saldo)pior={data,saldo};
     const cls=saldo<0?'fx-row-bad':(recDia||pagar)?'fx-row-good':'';
     if(recDia||pagar||data===hj){
-      rows+=`<tr class="${cls}"><td class="mono">${fmtD(data)}</td><td class="tr vin">${recDia?fmt(recDia):'—'}</td><td class="tr vout">${pagar?fmt(pagar):'—'}</td><td class="tr">${pago?fmt(pago):'—'}</td><td class="tr ${saldo>=0?'vin':'vout'}">${fmt(saldo)}</td><td>${dia.length?dia.length+' item(ns)':(data===hj?'Hoje':'')}</td></tr>`;
+      rows+=`<tr class="${cls}"><td class="mono">${fmtD(data)}</td><td class="tr vin">${recDia?fmt(recDia):'—'}</td><td class="tr vout">${pagar?fmt(pagar):'—'}</td><td class="tr">${pago?fmt(pago):'—'}</td><td class="tr ${saldo>=0?'vin':'vout'}">${saldoDisponivel?fmt(saldo):'—'}</td><td>${dia.length?dia.length+' item(ns)':(data===hj?'Hoje':'')}</td></tr>`;
     }
   }
   $('content').innerHTML=`<div>
@@ -3353,17 +3355,17 @@ function rFluxo(){
       </div>
       <div class="fx-card ${vencidos>0?'fx-warn':'fx-ok'}">
         <div class="fx-title">Leitura executiva</div>
-        <div class="fx-sub">Vencidos em aberto: <strong class="vout">${fmt(vencidos)}</strong> · Próximos 7 dias a pagar: <strong>${fmt(prox7.reduce((s,x)=>s-x.valor,0))}</strong> · Pior saldo projetado: <strong class="${pior.saldo>=0?'vin':'vout'}">${fmt(pior.saldo)}</strong> em ${fmtD(pior.data)}</div>
+        <div class="fx-sub">Vencidos em aberto: <strong class="vout">${fmt(vencidos)}</strong> · Próximos 7 dias a pagar: <strong>${fmt(prox7.reduce((s,x)=>s-x.valor,0))}</strong> · Pior saldo projetado: ${saldoDisponivel?`<strong class="${pior.saldo>=0?'vin':'vout'}">${fmt(pior.saldo)}</strong> em ${fmtD(pior.data)}`:'indisponível sem saldo inicial e extrato'}</div>
       </div>
     </div>
     <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(165px,1fr))">
-      <div class="kpi" style="--kc:var(--ok)"><div class="kpi-l">Recebido</div><div class="kpi-v">${fmt(recebido)}</div><div class="kpi-s">Extratos e Agenda</div></div>
+      <div class="kpi" style="--kc:var(--ok)"><div class="kpi-l">Créditos em conta</div><div class="kpi-v">${coverage.available?fmt(recebido):'—'}</div><div class="kpi-s">Extrato bancário</div></div>
       <div class="kpi" style="--kc:var(--er)"><div class="kpi-l">Pagamento do mês</div><div class="kpi-v">${fmt(pagPrev)}</div><div class="kpi-s">Pago: ${fmt(pagReal)} · A pagar: ${fmt(abertoPagar)}</div></div>
       <div class="kpi" style="--kc:var(--wa)"><div class="kpi-l">A pagar</div><div class="kpi-v" style="color:var(--wa)">${fmt(abertoPagar)}</div><div class="kpi-s">pendente por vencimento</div></div>
-      <div class="kpi" style="--kc:${fim>=0?'var(--ok)':'var(--er)'}"><div class="kpi-l">Saldo projetado</div><div class="kpi-v" style="color:${fim>=0?'var(--ok)':'var(--er)'}">${fmt(fim)}</div><div class="kpi-s">saldo inicial + recebido − pagamentos</div></div>
-      <div class="kpi" style="--kc:${realizado>=0?'var(--ok)':'var(--er)'}"><div class="kpi-l">Saldo realizado</div><div class="kpi-v" style="color:${realizado>=0?'var(--ok)':'var(--er)'}">${fmt(realizado)}</div><div class="kpi-s">saldo inicial + recebido − pago</div></div>
+      <div class="kpi" style="--kc:${fim>=0?'var(--ok)':'var(--er)'}"><div class="kpi-l">Saldo projetado</div><div class="kpi-v" style="color:${fim>=0?'var(--ok)':'var(--er)'}">${saldoDisponivel?fmt(fim):'—'}</div><div class="kpi-s">saldo inicial + recebido − pagamentos</div></div>
+      <div class="kpi" style="--kc:${realizado>=0?'var(--ok)':'var(--er)'}"><div class="kpi-l">Saldo pelos registros</div><div class="kpi-v" style="color:${realizado>=0?'var(--ok)':'var(--er)'}">${saldoDisponivel?fmt(realizado):'—'}</div><div class="kpi-s">saldo inicial + recebido − pago</div></div>
     </div>
-    <div class="tw"><table><thead><tr><th>Dia</th><th class="tr">Recebido</th><th class="tr">Pagamento</th><th class="tr">Pago</th><th class="tr">Saldo projetado</th><th>Obs.</th></tr></thead><tbody>${rows||'<tr><td colspan="6"><div class="es"><div class="em">💸</div><h3>Sem fluxo nesse mês</h3><p>Importe o extrato em Despesa × Receita ou inclua recebimentos manuais para os períodos ainda sem extrato.</p></div></td></tr>'}</tbody></table></div>
+    <p class="ag-muted">${agEsc(coverage.message)} ${coverage.available&&!saldoDisponivel?'Informe o saldo inicial para calcular os saldos.':''}</p><div class="tw"><table><thead><tr><th>Dia</th><th class="tr">Recebido</th><th class="tr">Pagamento</th><th class="tr">Pago</th><th class="tr">Saldo projetado</th><th>Obs.</th></tr></thead><tbody>${rows||'<tr><td colspan="6"><div class="es"><div class="em">💸</div><h3>Sem fluxo nesse mês</h3><p>Importe o extrato em Despesa × Receita para visualizar os créditos em conta.</p></div></td></tr>'}</tbody></table></div>
   </div>`;
 }
 window.rFluxo=rFluxo;
@@ -3414,13 +3416,6 @@ function auditoriaItens(){
     const {meta,missing,unknown}=financeSeriesMissing(rows),seed=rows.find(r=>!r._deleted);
     if(missing.length)add('Alta',seed.parcelamento_id?'Parcelas ausentes':'Recorrências ausentes',`Faltam ocorrências ${missing.join(', ')}. ${meta?'A reposição exige revisão e mantém as ocorrências já gravadas.':'Histórico sem metadados suficientes para reposição segura; confira o contrato.'}`,seed,meta?lancSeriesMissingValue(rows,missing):0,{gid,repairable:!!meta});
     if(unknown&&seed.recorrencia_id)add('Média','Série antiga sem prazo registrado','Não é possível comprovar o total de meses desta recorrência antiga. Confira o contrato; não foram inventadas ocorrências futuras.',seed,0);
-  }
-  const agendaGroups=new Map();
-  for(const r of financeRaw.agenda_financeira||[]){if(r._deleted||(r.tipo||'receber')==='pagar')continue;const key=agManualKey(r);if(!key||!finValidDate(agDateKey(r.data))){if(+r.valor>0)add('Alta','Recebimento sem data/origem válida','Confira data e origem para classificar este valor na Agenda.',r,+r.valor,{source:'agenda'});continue;}if(!agendaGroups.has(key))agendaGroups.set(key,[]);agendaGroups.get(key).push(r);}
-  for(const [key,rows] of agendaGroups){
-    const r=agCanonicalRows(rows)[0];if(!r)continue;
-    if(rows.length>1)add('Alta','Recebimento com cópias antigas',`${rows.length} registros na mesma data/origem. O total utiliza uma única origem; compare os valores antes de consolidar pelo botão Editar.`,r,Math.max(...rows.map(x=>+x.valor||0)),{source:'agenda',ids:rows.map(x=>x.id),meta:rows.map(x=>`${x.id}: ${fmt(x.valor)}`)});
-    if((+r.valor||0)>0&&r.status!=='Baixado'&&finValidDate(r.data)&&r.data<hoje)add('Alta','Recebimento vencido em aberto','Recebimento previsto sem baixa. Confira o extrato.',r,+r.valor,{source:'agenda'});
   }
   if(!financeSync.ready||navigator.onLine===false||Object.values(financeSync.collections).some(s=>s.cached))add('Alta','Base sem confirmação atual','Diagnóstico parcial. Reconecte antes de interpretar os totais ou registrar alterações.',null,0,{source:'sistema'});
   for(const [col,state] of Object.entries(financeSync.collections))if(state.error)add('Alta','Falha de sincronização',`${col}: ${state.error}. Use Reconectar para restabelecer a leitura.`,null,0,{source:'sistema'});
@@ -4079,7 +4074,7 @@ window.estornarLancAgenda=id=>{
   confirm_('Voltar lançamento para aberto',r.descricao||'Reabrir este lançamento?',()=>financeAction(()=>finUpdateMany([{col:'lancamentos',id,expected:r,patch:{status:'Pendente',data_efetivacao:null}}]),'Lançamento reaberto.'));
 };
 window.baixaAgendaDia=data=>{
-  const manuais=store.agenda.filter(r=>r.data===data&&r.status!=='Baixado');
+  const manuais=[]; // Recebimentos antigos ficam no histórico, fora da Agenda e das baixas em lote.
   const lancs=store.lancamentos.filter(r=>r.rec_desp!=='Contas a receber'&&agLancData(r)===data&&!isDone(r));
   if(manuais.some(r=>r.id!==agCanonicalIdFromKey(agManualKey(r))||agSnapshotRows(agManualKey(r)).filter(x=>!x._deleted).length>1)){toast('Consolide os recebimentos antigos pelo botão Editar antes da baixa em lote.','er');return;}
   const changes=[...manuais.map(r=>({col:'agenda_financeira',id:r.id,expected:finExpected('agenda_financeira',r.id),patch:{status:'Baixado',data_baixa:today()}})),...lancs.map(r=>({col:'lancamentos',id:r.id,expected:finExpected('lancamentos',r.id),patch:{status:'Concluído',data_efetivacao:today()}}))];
@@ -4134,6 +4129,7 @@ function agSection(title,sub,items,emptyIcon='📭'){
 window.verAgendaDia=function(data){
   normalizeAgendaStore();
 
+  const coverageDia=bkCoverage(data.slice(0,7));
   const itens=agUnificarItensVisiveis(agAllMesItems().filter(x=>x.data===data)).sort(agSort);
   const rec=agSum(itens,x=>x.tipo!=='pagar');
   const pag=agSum(itens,x=>x.tipo==='pagar');
@@ -4151,19 +4147,20 @@ window.verAgendaDia=function(data){
   </div>`).join('');
   oM('Agenda de '+fmtD(data),`<div class="ag-day-detail">
     <div class="kpis" style="grid-template-columns:repeat(4,1fr);margin-bottom:2px">
-      <div class="kpi" style="--kc:var(--ok)"><div class="kpi-l">Recebimento no dia</div><div class="kpi-v">${fmt(rec)}</div></div>
+      <div class="kpi" style="--kc:var(--ok)"><div class="kpi-l">Créditos no dia</div><div class="kpi-v">${coverageDia.available?fmt(rec):'—'}</div></div>
       <div class="kpi" style="--kc:var(--er)"><div class="kpi-l">Pagamento no dia</div><div class="kpi-v">${fmt(pag)}</div></div>
       <div class="kpi" style="--kc:var(--ok)"><div class="kpi-l">Pago no dia</div><div class="kpi-v">${fmt(pago)}</div></div>
       <div class="kpi" style="--kc:var(--wa)"><div class="kpi-l">A pagar no dia</div><div class="kpi-v" style="color:var(--wa)">${fmt(aPagar)}</div></div>
     </div>
-    ${rows||'<div class="es"><div class="em">🗓️</div><h3>Sem valores nesse dia</h3><p>Inclua recebimento manual ou cadastre pagamentos em Lançamentos com vencimento nessa data.</p></div>'}
-  </div>`, `<button class="btn bs" onclick="nAgenda('receber','${data}')">＋ Receber manual</button>${aberto.length?`<button class="btn bp" onclick="baixaAgendaDia('${data}')">✅ Baixar dia</button>`:''}<button class="btn bs" onclick="cM()">Fechar</button>`, true);
+    ${rows||'<div class="es"><div class="em">🗓️</div><h3>Sem valores nesse dia</h3><p>Importe o extrato ou cadastre pagamentos em Lançamentos com vencimento nessa data.</p></div>'}
+  </div>`, `${aberto.length?`<button class="btn bp" onclick="baixaAgendaDia('${data}')">✅ Baixar dia</button>`:''}<button class="btn bs" onclick="cM()">Fechar</button>`, true);
 };
 
 function rAgenda(){
   store.agenda=store.agenda||[];
   normalizeAgendaStore();
 
+  const coverage=bkCoverage(agendaMes);
   const todos=agAllMesItems();
   const itens=agMesItems();
   const rec=agSum(todos,x=>x.tipo!=='pagar');
@@ -4213,11 +4210,11 @@ function rAgenda(){
 
   $('content').innerHTML=`<div class="ag-shell">
     <div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(185px,1fr))">
-      <div class="kpi" style="--kc:var(--ok)"><div class="kpi-l">Recebimento do mês</div><div class="kpi-v">${fmt(rec)}</div><div class="kpi-s">Recebido: ${fmt(recBaixado)} · Aberto: ${fmt(recAberto)}</div></div>
+      <div class="kpi" style="--kc:var(--ok)"><div class="kpi-l">Créditos em conta</div><div class="kpi-v">${coverage.available?fmt(rec):'—'}</div><div class="kpi-s">Extrato bancário</div></div>
       <div class="kpi" style="--kc:var(--er)"><div class="kpi-l">Total pagamento do mês</div><div class="kpi-v">${fmt(pag)}</div><div class="kpi-s">Automático dos lançamentos: ${autoPag} item(ns)</div></div>
       <div class="kpi" style="--kc:var(--wa)"><div class="kpi-l">A pagar</div><div class="kpi-v" style="color:var(--wa)">${fmt(pagAberto)}</div><div class="kpi-s">Pendentes por vencimento</div></div>
-      <div class="kpi" style="--kc:var(--ok)"><div class="kpi-l">Pago</div><div class="kpi-v">${fmt(pagBaixado)}</div><div class="kpi-s">Lançamentos concluídos + manuais baixados</div></div>
-      <div class="kpi" style="--kc:${rec-pag>=0?'var(--ok)':'var(--er)'}"><div class="kpi-l">Saldo previsto</div><div class="kpi-v" style="color:${rec-pag>=0?'var(--ok)':'var(--er)'}">${fmt(rec-pag)}</div><div class="kpi-s">Recebimento − pagamento</div></div>
+      <div class="kpi" style="--kc:var(--ok)"><div class="kpi-l">Pago</div><div class="kpi-v">${fmt(pagBaixado)}</div><div class="kpi-s">Lançamentos concluídos</div></div>
+      <div class="kpi" style="--kc:${rec-pag>=0?'var(--ok)':'var(--er)'}"><div class="kpi-l">Saldo previsto</div><div class="kpi-v" style="color:${rec-pag>=0?'var(--ok)':'var(--er)'}">${coverage.available?fmt(rec-pag):'—'}</div><div class="kpi-s">Recebimento − pagamento</div></div>
       <div class="kpi" style="--kc:${recAberto-pagAberto>=0?'var(--ok)':'var(--er)'}"><div class="kpi-l">Fluxo aberto</div><div class="kpi-v" style="color:${recAberto-pagAberto>=0?'var(--ok)':'var(--er)'}">${fmt(recAberto-pagAberto)}</div><div class="kpi-s">Receber aberto − pagar aberto</div></div>
     </div>
     <div class="ag-top">
@@ -4225,12 +4222,11 @@ function rAgenda(){
       <div class="ag-actions">
         <button class="btn bs" onclick="agHoje()">Hoje</button>
         <button class="btn bs" onclick="agToggleBaixados()">${agHideBaixados?'👁️ Mostrar pagos':'🙈 Ocultar pagos'}</button>
-        <button class="btn bp" onclick="nAgenda('receber')">＋ Recebimento manual</button>
-        <button class="btn bpu" onclick="limparAgendaMesBaixados()">🧹 Apagar baixados manuais</button>
-        <button class="btn bd2" onclick="excluirAgendaMes()">🗑️ Excluir manuais do mês</button>
+        <button class="btn bs" onclick="bkOpenReceipts()">Ver extratos</button>
       </div>
     </div>
     
+    <p class="ag-muted">${agEsc(coverage.message)}</p>
     <div class="ag-cal">
       <div class="ag-week">${['SEG','TER','QUA','QUI','SEX','SÁB','DOM'].map(d=>`<div class="ag-dow">${d}</div>`).join('')}</div>
       <div class="ag-grid">${cells}</div>
@@ -4244,7 +4240,7 @@ function rAgenda(){
     </div>
     ${agSection('A pagar do mês','pendente',aPagar,'⏳')}
     ${!agHideBaixados?agSection('Pagos no mês','já baixados',pagos,'✅'):''}
-    ${agSection('Recebimentos do mês','extratos e manuais',recebimentos,'💰')}
+    ${agSection('Créditos do mês','extrato bancário',recebimentos,'💰')}
   </div>`;
 }
 
@@ -4427,9 +4423,9 @@ window.render=function(m){
     if(t.category==='Recebimentos 99Food')return '99Food';
     if(t.category==='Recebimentos de cartões')return /maestro|electron|\bdeb\b/.test(norm(t.history))?'Débito':'Crédito';
     if(policy!=='all')return '';
+    if(t.isOwn)return 'Transferências entre contas';
     if(t.person)return 'Créditos de sócios';
     if(t.category==='Estornos / devoluções')return 'Estornos';
-    if(t.isOwn)return 'Transferências próprias';
     if(t.category==='Depósitos em dinheiro a validar')return 'Dinheiro';
     return /pix/.test(norm(t.history))?'Pix':'Outros créditos';
   }
@@ -4705,7 +4701,7 @@ window.render=function(m){
         const receipts=BurgerBankCore.receipts(statement,policy);
         if(old&&(!Array.isArray(old.receipts?.rows)||old.receipts.rows.some(r=>!finValidDate(r.date)||!r.origin||!Number.isSafeInteger(r.cents)||r.cents<=0)))throw Error('Extrato salvo sem recebimentos confiáveis. Confira antes de atualizar.');
         const previous=new Map((old?.receipts?.rows||[]).map(r=>[r.date+'|'+agSlug(r.origin),r]));
-        for(const r of receipts.rows){
+        for(const r of (policy==='identified'?receipts.rows:[])){
           const key=r.date+'|'+agSlug(r.origin),before=previous.get(key);
           const changed=!before||before.cents!==r.cents||before.count!==r.count;
           if(changed&&inventory.rows.some(manual=>{
@@ -4734,12 +4730,35 @@ window.render=function(m){
 })(typeof window==='undefined'?globalThis:window);
 
 /* Agenda and cash flow consume the exact daily totals saved atomically with each statement. */
-function bkCloudMonths(){return (financeRaw.extratos_bancarios||[]).filter(d=>!d._deleted&&d.statement&&d.receipts);}
+function bkCloudMonths(){return (financeRaw.extratos_bancarios||[]).filter(d=>!d._deleted&&d.statement);}
+const bkAllReceiptsCache=new WeakMap();
+function bkAllReceipts(doc){
+  if(!doc?.statement||typeof doc.statement!=='object')throw Error('Extrato indisponível para conferência.');
+  for(const name of ['receiptOverrides','receiptOverrideKeys']){
+    const v=doc[name];if(v!==undefined&&(v===null||typeof v!=='object'||Array.isArray(v)||Object.keys(v).length))throw Error('Extrato com classificações especiais exige conferência antes de somar os créditos.');
+  }
+  if(bkAllReceiptsCache.has(doc.statement))return bkAllReceiptsCache.get(doc.statement);
+  BurgerBankCore.validateStatement(doc.statement);
+  const result=BurgerBankCore.receipts(doc.statement,'all');
+  if(result.excluded!==0||!Number.isSafeInteger(result.included))throw Error('Créditos do extrato exigem conferência.');
+  bkAllReceiptsCache.set(doc.statement,result);return result;
+}
+function bkCoverage(mes){
+  const status=financeSync.collections?.extratos_bancarios;
+  if(!status?.confirmed||status.error)return {available:false,message:'Aguardando confirmação dos extratos.'};
+  const docs=bkCloudMonths().filter(d=>d.month===mes);
+  if(!docs.length)return {available:false,message:'Sem extrato importado para este mês. Importe o extrato para ver os créditos.'};
+  if(docs.length!==1)throw Error('Há mais de um extrato neste mês. Confira antes de somar os créditos.');
+  bkAllReceipts(docs[0]);
+  const days=docs[0].statement.daily.map(d=>d.date).sort();
+  return {available:true,last:days.at(-1),message:'Créditos do extrato importado até '+fmtD(days.at(-1))+'.'};
+}
 function bkBankReceipts(mes=''){
-  const result=[];
+  const result=[],seen=new Set();
   for(const doc of bkCloudMonths()){
     if(mes&&doc.month!==mes)continue;
-    for(const r of doc.receipts.rows){const slug=agSlug(r.origin),key=r.date+'|'+slug;result.push({
+    if(seen.has(doc.month))throw Error('Há mais de um extrato neste mês. Confira antes de somar os créditos.');seen.add(doc.month);
+    for(const r of bkAllReceipts(doc).rows){const slug=agSlug(r.origin),key=r.date+'|'+slug;result.push({
       id:'extrato_'+r.date.replaceAll('-','')+'_'+slug,manual_key:key,source:'extrato',source_type:'extrato_bancario',tipo:'receber',
       data:r.date,descricao:r.origin,origem:r.origin,origem_canonica:r.origin,forma:r.origin,conta:'Sicoob - Principal',
       status:'Baixado',valor:r.cents/100,bank_cents:r.cents,bank_count:r.count,bank_month:doc.month,
@@ -4756,10 +4775,7 @@ function bkManualCovered(r){
   const key=agManualKey(r);return doc.receipts.rows.some(x=>x.date+'|'+agSlug(x.origin)===key);
 }
 function bkOpeningBalance(mes){const doc=bkCloudMonths().find(d=>d.month===mes);return doc&&doc.statement.openingDate<mes+'-01'?doc.statement.opening/100:null;}
-function bkCombinedReceipts(mes=''){
-  const manual=agManualMesItems(mes).filter(r=>!bkManualCovered(r));
-  return [...manual,...bkBankReceipts(mes)].sort(agSort);
-}
+function bkCombinedReceipts(mes=''){return bkBankReceipts(mes);}
 function bkSuppressedManual(mes=''){
   return agManualMesItems(mes).filter(bkManualCovered).map(r=>{
     const auto=bkBankReceipts(mes).filter(x=>x.data===r.data),same=auto.find(x=>agManualKey(x)===agManualKey(r));
@@ -4785,7 +4801,7 @@ window.bkOpenReceipts=function(){
   const sum=(rs,fn)=>rs.reduce((s,r)=>s+fn(r),0);
   const state={statements:[],ignored:[],pending:[],review:[],cloudConfirmed:false,tab:'overview',from:'',to:'',search:'',status:'',person:'',page:1,ready:false,busy:false,message:'',model:null};
   const DB='burger-bank-statements-v1';
-  const RECEIPT_POLICY='identified';
+  const RECEIPT_POLICY='all';
   function storage(mode,action){return new Promise((resolve,reject)=>{
     const req=indexedDB.open(DB,1);req.onupgradeneeded=()=>req.result.createObjectStore('data');req.onerror=()=>reject(req.error);
     req.onsuccess=()=>{const db=req.result,tx=db.transaction('data',mode),os=tx.objectStore('data');let val;
@@ -4873,14 +4889,12 @@ window.bkOpenReceipts=function(){
     <section class="bk-panel"><div class="bk-section-title"><h2>${state.status==='outlier'?'Saídas fora do padrão':'Movimentos do extrato'}</h2><button data-bank-export="bank">Exportar este filtro</button></div><div class="bk-controls"><label>Descrição <input data-bank-search value="${E(state.search)}" placeholder="Buscar no extrato"></label>${state.status==='outlier'?'<button data-bank-attention="">Ver todos os movimentos</button>':''}</div>${paged(visible.sort((a,b)=>b.date.localeCompare(a.date)))}</section>`;
   }
   function receiptView(model,ms){
-    const docs=bkCloudMonths().filter(d=>scope({month:d.month})),auto=bkBankReceipts().filter(r=>scope({month:r.data.slice(0,7)})),suppressed=bkSuppressedManual().filter(r=>scope({month:r.data.slice(0,7)}));
-    const included=sum(docs,d=>d.receipts.included),excluded=sum(docs,d=>d.receipts.excluded);
-    const origins=[...new Set(auto.map(r=>r.forma))].sort();
-    return `<div class="bk-kpis">${card('Recebimentos na Agenda',money(included),`${auto.length} totais por dia e origem`)}${card('Créditos a identificar',money(excluded),'Origem pendente')}${card('Manuais preservados',suppressed.length+' registros','Histórico anterior ao extrato')}${card('Atualização','Na importação','Agenda e Fluxo de Caixa')}</div>
-    <section class="bk-panel"><h2>Agenda Financeira e Fluxo de Caixa</h2>
-    ${table(['Mês',...origins,'Total automático','Créditos a identificar'],ms.map(m=>{const doc=docs.find(d=>d.month===m.month);return cells([month(m.month),...origins.map(o=>doc?money(sum(auto.filter(r=>r.data.startsWith(m.month)&&r.forma===o),r=>r.bank_cents)):'—'),doc?money(doc.receipts.included):'Sem extrato',doc?money(doc.receipts.excluded):'—']);}))}</section>
-    <section class="bk-panel"><h2>Conferência dos manuais anteriores</h2>${table(['Dia','Origem manual','Valor manual preservado','Extrato na mesma origem','Diferença','Total bancário do dia'],suppressed.map(r=>cells([date(r.data),r.descricao,money(Math.round(r.valor*100)),r.automatic===null?'Outra classificação':money(Math.round(r.automatic*100)),r.automatic===null?'Revisar classificação':money(Math.round((r.automatic-r.valor)*100)),money(Math.round(r.automaticDay*100))])))}</section>
-    <section class="bk-panel"><h2>Recebimentos diários automáticos</h2>${table(['Dia','Origem','Créditos agrupados','Valor','Fonte'],auto.map(r=>cells([date(r.data),r.forma,r.bank_count,money(r.bank_cents),'Extrato bancário'])))}</section>`;
+    const docs=bkCloudMonths().filter(d=>scope({month:d.month})),auto=bkBankReceipts().filter(r=>scope({month:r.data.slice(0,7)}));
+    const total=sum(docs,d=>bkAllReceipts(d).included),origins=[...new Set(auto.map(r=>r.forma))].sort();
+    const transfers=sum(auto.filter(r=>r.forma==='Transferências entre contas'),r=>r.bank_cents);
+    return `<div class="bk-kpis">${card('Créditos em conta',money(total),`${auto.length} totais por dia e origem`)}${card('Transferências entre contas',money(transfers),'Separadas das vendas')}${card('Atualização','Na importação','Agenda e Fluxo de Caixa')}</div>
+    <section class="bk-panel"><h2>Créditos por mês e origem</h2>${table(['Mês',...origins,'Total de créditos'],ms.map(m=>{const doc=docs.find(d=>d.month===m.month);return cells([month(m.month),...origins.map(o=>doc?money(sum(auto.filter(r=>r.data.startsWith(m.month)&&r.forma===o),r=>r.bank_cents)):'—'),doc?money(bkAllReceipts(doc).included):'Sem extrato']);}))}</section>
+    <section class="bk-panel"><h2>Créditos diários do extrato</h2>${table(['Dia','Origem','Créditos agrupados','Valor','Fonte'],auto.map(r=>cells([date(r.data),r.forma,r.bank_count,money(r.bank_cents),'Extrato bancário'])))}</section>`;
   }
   function render(){
     if(CM!=='extratos')return;
@@ -5677,10 +5691,10 @@ window.financeReconnectAll=function(){window.BurgerCashRunner.reconnect();window
 </script>
 
 <script type="application/json" id="financeiro-release">{
-  "build": "FINANCEIRO_BURGER_2026_11_09_BUSCA_PERIODOS_V1",
+  "build": "FINANCEIRO_BURGER_2026_11_09_AGENDA_EXTRATO_V1",
   "base": {
     "url": "https://github.com/marcelomreidogado-cmd/financeiro-burgerdorei/blob/main/index.html",
-    "sha256": "e72651bdfe41e872f48cd66e05a92589e4be8bb399b16782c07dd8ff85290e4b"
+    "sha256": "225fd143bcd766406ae3df9ad34b5003979e33f0efecd0f49f9434e1d01eb2ee"
   },
   "changelog": [
     "Transações para criação, alteração, baixa e exclusão financeira; conflitos exigem revisão.",
@@ -5710,7 +5724,8 @@ window.financeReconnectAll=function(){window.BurgerCashRunner.reconnect();window
     "Agenda e extratos conferem gravações concorrentes e histórico antes de salvar; os lançamentos compartilham a revisão de proteção.",
     "Renomeação do plano de contas atualiza vínculos em lotes e informa falhas parciais.",
     "Backup ampliado de Financeiro, extratos, caixa diário e motoboys; conferência de arquivos v1 e v2 somente leitura.",
-    "Lançamentos: busca por todos os meses ou meses escolhidos e filtros para parceladas, recorrentes e vencimentos futuros."
+    "Lançamentos: busca por todos os meses ou meses escolhidos e filtros para parceladas, recorrentes e vencimentos futuros.",
+    "Agenda e Fluxo usam todos os créditos realmente presentes nos extratos; transferências entre contas são separadas e o histórico manual é preservado sem compor totais."
   ],
   "limites": [
     "É necessário fechar e atualizar todas as abas antigas para que os usuários consigam gravar com as regras atualizadas.",
