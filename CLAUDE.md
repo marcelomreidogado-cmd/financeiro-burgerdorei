@@ -25,5 +25,6 @@ Sistema financeiro da hamburgueria Burger do Rei: lançamentos (contas a pagar/r
 
 ## Polimento visual
 - Etapa 1 (15/11/2026, `FINANCEIRO_BURGER_2026_11_15_VISUAL_V1`, bloco `<style id="financeiro-polimento-v1">`): até 900 px o menu lateral vira faixa horizontal no topo; painéis lado a lado (`.fin-stack`, `.fin-stack4`) empilham; valores `.vin/.vout` sem quebra; escala do gráfico Receita × Breakeven corrigida.
-- Etapa 2 (pendente): DRE no celular (coluna Item fixa ao deslizar), cabeçalho de Lançamentos (título 38 px e filtros), revisão tela a tela (Agenda, Fluxo, Auditoria, BI, Despesa × Receita, Plano de Contas, Patrimônio).
+- Etapa 2 (15/11/2026, `..._VISUAL_V2`): cabeçalho de Lançamentos (título menor, filtros `auto-fill` sem cortar); DRE até 900 px com coluna Item fixa (150 px, `left:-11px` para cobrir o recuo) e tabela no tamanho do conteúdo. No computador a DRE mantém a coluna Item de 380 px **sem** fixar (decisão anterior: regras `position:static!important`).
+- Possíveis próximos refinamentos: Agenda (primeira semana com muito espaço vazio), Despesa × Receita e BI no celular.
 - Teste visual sem Firebase real: injetar um `window.firebase` falso (auth + firestore compat, `metadata.fromCache:false`) via Playwright `addInitScript` e bloquear `gstatic.com/firebasejs`.
