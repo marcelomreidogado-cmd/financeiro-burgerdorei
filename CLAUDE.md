@@ -19,3 +19,11 @@ Sistema financeiro da hamburgueria Burger do Rei: lançamentos (contas a pagar/r
 - Editar → extrair o `<script>` e validar com `node --check` → testar mudanças de dados numa cópia → commit em português → push na `main` publica.
 - Nunca apagar/sobrescrever dados do Firestore sem backup (o app tem "Baixar relatório completo"/backup).
 - Usuário (Marcelo) trabalha em português do Brasil, no Mac, e prefere soluções simples, sem terminal.
+
+## Versão e cache local (importante)
+- Ao trocar `APP_VERSION`, o app apaga o cache local (`bdr_data_v2_light`) **a menos que a versão anterior esteja na lista** ao lado de `LS_VER_KEY`. Sempre inclua a versão que está saindo nessa lista. Atualize também `"build"` em `<script id="financeiro-release">`.
+
+## Polimento visual
+- Etapa 1 (15/11/2026, `FINANCEIRO_BURGER_2026_11_15_VISUAL_V1`, bloco `<style id="financeiro-polimento-v1">`): até 900 px o menu lateral vira faixa horizontal no topo; painéis lado a lado (`.fin-stack`, `.fin-stack4`) empilham; valores `.vin/.vout` sem quebra; escala do gráfico Receita × Breakeven corrigida.
+- Etapa 2 (pendente): DRE no celular (coluna Item fixa ao deslizar), cabeçalho de Lançamentos (título 38 px e filtros), revisão tela a tela (Agenda, Fluxo, Auditoria, BI, Despesa × Receita, Plano de Contas, Patrimônio).
+- Teste visual sem Firebase real: injetar um `window.firebase` falso (auth + firestore compat, `metadata.fromCache:false`) via Playwright `addInitScript` e bloquear `gstatic.com/firebasejs`.

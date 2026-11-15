@@ -994,6 +994,36 @@ body,.app,.content,.btn,.fc,.fv,input,select,textarea,table{font-family:var(--fo
 
 </style>
 <style>#fin-auth-gate[hidden]{display:none!important}</style>
+
+<style id="financeiro-polimento-v1">
+/* ── polimento visual (15/11/2026) ── */
+body,#content{font-variant-numeric:tabular-nums}
+/* valores com sinal (+/−) não quebram em duas linhas */
+.vin,.vout{white-space:nowrap}
+.ni{transition:background .12s,color .12s}
+.ni:focus-visible,.btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+/* Celular e tablet: o menu lateral ocupava mais da metade da tela; vira uma faixa no topo que desliza */
+@media(max-width:900px){
+  #app{flex-direction:column}
+  #sb,#sb.col{width:100%!important;min-width:0!important;flex-direction:row;align-items:center;overflow-x:auto;overflow-y:hidden;border-right:0;border-bottom:1px solid var(--bd);flex-shrink:0;scrollbar-width:none;padding:6px 4px;gap:2px}
+  #sb::-webkit-scrollbar{display:none}
+  #sb .sb-logo{height:auto;border:0;padding:0 6px!important;flex:0 0 auto}
+  #sb .sb-logo img{height:28px!important}
+  #sb .sb-sec,#sb .sb-tog{display:none!important}
+  #sb .ni{flex:0 0 auto;margin:0;padding:8px 10px;border-radius:999px}
+  #sb .ni .lb{opacity:1!important;display:inline!important;font-size:13px}
+  #topbar{padding:0 12px;gap:6px}
+  #topbar h1{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  #tbd{display:none}
+  #dbs{margin-left:auto;max-width:48vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}
+  #month-nav{padding:0 10px}
+  #content{padding:12px 10px}
+  /* painéis lado a lado empilham no celular (antes cortavam à direita) */
+  .fin-stack{grid-template-columns:minmax(0,1fr)!important}
+  .fin-stack4{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .fin-stack>*,.fin-stack4>*,.bi-grid>*{min-width:0}
+}
+</style>
 </head>
 <body>
 <div id="fin-auth-gate" style="min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--bg)">
@@ -1445,7 +1475,7 @@ let fbOk = false;
 let unsubListeners = [];
 
 // Blindagem pós-resgate: evita re-render pesado enquanto o usuário clica/digita.
-const APP_VERSION = 'FINANCEIRO_BURGER_2026_11_10_ACESSO_V1';
+const APP_VERSION = 'FINANCEIRO_BURGER_2026_11_15_VISUAL_V1';
 let renderTimer = null;
 let pendingRender = null;
 function modalAberto(){
@@ -1494,7 +1524,7 @@ function initFirebase(){
 // ── Fallback localStorage ──────────────────────────────
 const LS_KEY = 'bdr_data_v2_light';
 const LS_VER_KEY = 'bdr_build_version';
-try{ const previous=localStorage.getItem(LS_VER_KEY); if(previous!==APP_VERSION){ if(!['FINANCEIRO_BURGER_2026_10_20_R8','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2','FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V2','FINANCEIRO_BURGER_2026_11_09_AGENDA_GUARD_V1','FINANCEIRO_BURGER_2026_11_09_BACKUP_V2','FINANCEIRO_BURGER_2026_11_09_BUSCA_PERIODOS_V1','FINANCEIRO_BURGER_2026_11_09_AGENDA_EXTRATO_V1'].includes(previous))localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
+try{ const previous=localStorage.getItem(LS_VER_KEY); if(previous!==APP_VERSION){ if(!['FINANCEIRO_BURGER_2026_10_20_R8','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2','FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V2','FINANCEIRO_BURGER_2026_11_09_AGENDA_GUARD_V1','FINANCEIRO_BURGER_2026_11_09_BACKUP_V2','FINANCEIRO_BURGER_2026_11_09_BUSCA_PERIODOS_V1','FINANCEIRO_BURGER_2026_11_09_AGENDA_EXTRATO_V1','FINANCEIRO_BURGER_2026_11_10_ACESSO_V1'].includes(previous))localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
 // Não limpa caches antigos a cada abertura; evita trabalho desnecessário no Chrome local.
 // try{ localStorage.removeItem('bdr_data_v1'); }catch(e){}
 // try{ localStorage.removeItem('bdr_data_v2'); }catch(e){}
@@ -2921,7 +2951,7 @@ function rDash(){
       <div class="kpi" style="--kc:${entM-saiM>=0?'var(--ok)':'var(--er)'}"><div class="kpi-l">Resultado — ${mesLbl(mes)}</div><div class="kpi-v" style="color:${entM-saiM>=0?'var(--ok)':'var(--er)'}">${fmt(entM-saiM)}</div><div class="kpi-s">${entM?((entM-saiM)/entM*100).toFixed(1):'0'}% margem</div></div>
       <div class="kpi" style="--kc:var(--wa)"><div class="kpi-l">Pendentes</div><div class="kpi-v" style="color:var(--wa)">${fmt(tPend)}</div><div class="kpi-s">${pend.length} títulos · ${vencHoje.length} vencem hoje</div></div>
     </div>
-    <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px">
+    <div class="fin-stack" style="display:grid;grid-template-columns:2fr 1fr;gap:12px">
       <div class="bi-card"><div class="sh">Fluxo de Caixa <span>últimos 6 meses</span></div>
         <div style="display:flex;align-items:flex-end;gap:5px;min-height:120px">${bars6}</div>
         <div style="display:flex;gap:12px;margin-top:7px;font-size:10px;color:var(--tx2)"><span><i style="display:inline-block;width:8px;height:8px;background:var(--ok);border-radius:2px;margin-right:3px"></i>Vendas</span><span><i style="display:inline-block;width:8px;height:8px;background:var(--er);border-radius:2px;margin-right:3px"></i>Saídas</span></div>
@@ -2930,7 +2960,7 @@ function rDash(){
         ${topCat.map(([c,v])=>'<div class="bar-row"><div class="bar-lbl" style="font-size:11px" title="'+agEsc(c)+'">'+agEsc(c)+'</div><div class="bar-wrap"><div class="bar-fill" style="width:'+Math.round(v/maxCat*100)+'%;background:var(--er)"></div></div><div class="bar-val" style="color:var(--er);font-size:11px">'+fmt(v)+'</div></div>').join('')||'<span style="color:var(--tx3);font-size:12px">Sem dados</span>'}
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+    <div class="fin-stack" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
       <div class="bi-card">
         <div class="sh">📅 Vencimentos <span>hoje · amanhã · próximos</span></div>
         ${pendPrx.length===0?'<div style="color:var(--tx3);font-size:13px;padding:10px 0">✅ Sem vencimentos próximos</div>':pendPrx.map(pendCard).join('')}
@@ -2991,7 +3021,7 @@ function rVG(){
     </tr>`;
   }).join('');
 
-  const maxBEP=Math.max(...linhas.filter(l=>l.bep).map(l=>Math.max(l.receita,l.bep)),1);
+  const maxBEP=Math.max(...linhas.map(l=>Math.max(+l.receita||0,+l.bep||0)),1); // escala por todos os meses (sem BEP a escala virava 1 e as barras estouravam)
   const bepBars=linhas.filter(l=>l.receita||l.bep).map(l=>`<div class="chart-col">
     <div class="chart-area" style="position:relative;height:110px;align-items:flex-end;gap:2px">
       <div class="chart-b" style="height:${Math.round((l.receita/maxBEP)*100)}px;background:var(--ok)" title="Receita: ${fmt(l.receita)}"></div>
@@ -3008,7 +3038,7 @@ function rVG(){
       <div class="kpi" style="--kc:var(--pu)"><div class="kpi-l">BEP Médio ${ano}</div><div class="kpi-v" style="color:var(--pu)">${fmt(bepMedia)}</div><div class="kpi-s">média ${mesesAno.length} meses</div></div>
     </div>
 
-    <div style="display:grid;grid-template-columns:3fr 1fr;gap:12px;margin-bottom:12px">
+    <div class="fin-stack" style="display:grid;grid-template-columns:3fr 1fr;gap:12px;margin-bottom:12px">
       <div class="bi-card">
         <div class="sh">Receita vs Breakeven <span>${ano} — barras = mês</span></div>
         <div style="display:flex;align-items:flex-end;gap:4px;min-height:120px">${bepBars||'<span style="color:var(--tx3)">Sem dados</span>'}</div>
@@ -3605,7 +3635,7 @@ function rCfg(){
   const mkL=(arr,fn)=>arr.map((v,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--bd)"><span style="flex:1;font-size:13px">${agEsc(v)}</span><button class="btn bd2 btn-s btn-i" onclick="${fn}(${i})">✕</button></div>`).join('');
   $('content').innerHTML=`
     <div class="bi-card" style="margin-bottom:12px"><div class="sh">Usuários e acesso</div><p>Usuário atual: ${agEsc(FinAuth.current()?.username||'')}</p><div class="backup-actions"><button class="btn bs" onclick="FinAuth.passwordForm()">Alterar minha senha</button>${FinAuth.current()?.role==='admin'?'<button class="btn bp" onclick="FinAuth.manage()">Gerenciar usuários</button>':''}<button class="btn bs" onclick="FinAuth.logout()">Sair</button></div></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div class="fin-stack" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div class="bi-card"><div class="sh">Instituições Financeiras</div>${mkL(store.cfg.inst,'rmInst')}<div style="display:flex;gap:7px;margin-top:9px"><input id="ni-i" type="text" class="fv" placeholder="Nova instituição" style="flex:1"><button class="btn bp" onclick="addInst()">+</button></div></div>
       <div class="bi-card"><div class="sh">Formas de Pagamento</div>${mkL(store.cfg.fps,'rmFP')}<div style="display:flex;gap:7px;margin-top:9px"><input id="fp-i" type="text" class="fv" placeholder="Nova forma" style="flex:1"><button class="btn bp" onclick="addFP()">+</button></div></div>
     </div>
@@ -3626,11 +3656,11 @@ function rCfg(){
           <div style="font-size:13px">Restauração bloqueada pós-resgate</div>
           <div style="font-size:11px;color:var(--tx2);margin-top:3px">Proteção ativa: esta versão não permite reimportar planilha antiga nem resetar dados recuperados.</div>
         </div>
-        <div style="display:flex;gap:8px"><button class="btn bs" disabled title="Bloqueado para proteger a base recuperada">📥 Re-importar bloqueado</button><button class="btn bd2" disabled title="Bloqueado para proteger a base recuperada">🔄 Reset bloqueado</button></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn bs" disabled title="Bloqueado para proteger a base recuperada">📥 Re-importar bloqueado</button><button class="btn bd2" disabled title="Bloqueado para proteger a base recuperada">🔄 Reset bloqueado</button></div>
       </div>
     </div>
     <div class="bi-card" style="margin-top:12px"><div class="sh">Resumo</div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+      <div class="fin-stack4" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
         ${[['📋 Lançamentos',store.lancamentos.length],['🏷️ Plano de Contas',store.centrocusto.length],['🏢 Patrimônio',store.patrimonio.length],['📅 Meses com dados',[...new Set(store.lancamentos.map(r=>(r.data_competencia||'').slice(0,7)).filter(Boolean))].length]].map(([l,v])=>`<div style="background:var(--s2);border-radius:8px;padding:12px;text-align:center"><div style="font-size:17px;font-weight:700;color:var(--acc)">${v}</div><div style="font-size:11px;color:var(--tx2);margin-top:3px">${l}</div></div>`).join('')}
       </div>
     </div>`;
@@ -5773,7 +5803,7 @@ FinAuth.init().catch(e=>{const m=document.getElementById('fin-auth-message');if(
 </script>
 
 <script type="application/json" id="financeiro-release">{
-  "build": "FINANCEIRO_BURGER_2026_11_10_ACESSO_V1",
+  "build": "FINANCEIRO_BURGER_2026_11_15_VISUAL_V1",
   "base": {
     "url": "https://github.com/marcelomreidogado-cmd/financeiro-burgerdorei/blob/main/index.html",
     "sha256": "92ff98cbf8ff2ca8e97eda290ff0472374ca91fa585b20b820675346d91f6676"
@@ -7475,6 +7505,13 @@ FinAuth.init().catch(e=>{const m=document.getElementById('fin-auth-message');if(
     "testReport": "historico_testes_R7.pdfSupplier"
   }
 }</script>
+
+<script>
+/* polimento: no celular a faixa de menu desliza; mantém o item aberto visível */
+(function(){var sb=document.getElementById('sb');if(!sb)return;
+function mostrar(){var a=sb.querySelector('.ni.act');if(a&&sb.scrollWidth>sb.clientWidth+4){sb.scrollLeft=Math.max(0,a.offsetLeft-(sb.clientWidth-a.offsetWidth)/2);}}
+sb.addEventListener('click',function(){setTimeout(mostrar,60);});window.addEventListener('resize',mostrar);setTimeout(mostrar,800);})();
+</script>
 </body>
 </html>
 
