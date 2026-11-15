@@ -1010,6 +1010,12 @@ body,#content{font-variant-numeric:tabular-nums}
 .lx-filters>:first-child{grid-column:span 2}
 .lx-filters .full-row{grid-column:1/-1}
 .lx-filters select,.lx-filters .fv{min-width:0}
+/* BI: rótulo e seletor ficam juntos (antes 'Analisar:' ficava sozinho) */
+.bi-fld{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+/* Despesa × Receita: faixa de abas desliza, com esmaecimento indicando que há mais abas */
+.bk-tabs{scrollbar-width:thin}
+.bk-tabs>*{flex-shrink:0}
+.bk-tabs{gap:2px}.bk-tabs button{padding:11px 11px;font-size:13.5px}
 .ni{transition:background .12s,color .12s}
 .ni:focus-visible,.btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 /* Celular e tablet: o menu lateral ocupava mais da metade da tela; vira uma faixa no topo que desliza */
@@ -1039,6 +1045,13 @@ body,#content{font-variant-numeric:tabular-nums}
   html body #content.dre-content .dre-table-shell .dre-t thead th:first-child{left:-11px!important;z-index:32!important;min-width:150px!important;width:150px!important;max-width:150px!important}
   html body #content.dre-content .dre-table-shell .dre-t tbody td:first-child{position:sticky!important;left:-11px!important;z-index:12!important;min-width:150px!important;width:150px!important;max-width:150px!important;font-size:11.5px;box-shadow:1px 0 0 var(--bd2),6px 0 10px -6px rgba(0,0,0,.6)!important}
   .lx-filters{grid-template-columns:1fr 1fr!important}
+  /* indicadores em 2 colunas (na Agenda eram 6 cartões empilhados antes do calendário) */
+  #content .kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px}
+  #content .kpis>*{min-width:0}
+  /* Agenda: dias sem lançamento mais baixos no celular */
+  html body #content .ag-grid .ag-day:not(.rec):not(.pag):not(.mix){min-height:64px!important}
+  /* Despesa × Receita: esmaecimento indica que há mais abas para deslizar */
+  .bk-tabs{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 40px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 40px),transparent);padding-right:32px}
   .lx-head-top{grid-template-columns:42px 1fr 42px}
 }
 </style>
@@ -1493,7 +1506,7 @@ let fbOk = false;
 let unsubListeners = [];
 
 // Blindagem pós-resgate: evita re-render pesado enquanto o usuário clica/digita.
-const APP_VERSION = 'FINANCEIRO_BURGER_2026_11_15_VISUAL_V2';
+const APP_VERSION = 'FINANCEIRO_BURGER_2026_11_15_VISUAL_V3';
 let renderTimer = null;
 let pendingRender = null;
 function modalAberto(){
@@ -1542,7 +1555,7 @@ function initFirebase(){
 // ── Fallback localStorage ──────────────────────────────
 const LS_KEY = 'bdr_data_v2_light';
 const LS_VER_KEY = 'bdr_build_version';
-try{ const previous=localStorage.getItem(LS_VER_KEY); if(previous!==APP_VERSION){ if(!['FINANCEIRO_BURGER_2026_10_20_R8','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2','FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V2','FINANCEIRO_BURGER_2026_11_09_AGENDA_GUARD_V1','FINANCEIRO_BURGER_2026_11_09_BACKUP_V2','FINANCEIRO_BURGER_2026_11_09_BUSCA_PERIODOS_V1','FINANCEIRO_BURGER_2026_11_09_AGENDA_EXTRATO_V1','FINANCEIRO_BURGER_2026_11_10_ACESSO_V1','FINANCEIRO_BURGER_2026_11_15_VISUAL_V1'].includes(previous))localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
+try{ const previous=localStorage.getItem(LS_VER_KEY); if(previous!==APP_VERSION){ if(!['FINANCEIRO_BURGER_2026_10_20_R8','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_LEITURA_V2','FINANCEIRO_BURGER_2026_11_08_CAIXA_PREPARACAO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V1','FINANCEIRO_BURGER_2026_11_08_CAIXA_AUTO_V2','FINANCEIRO_BURGER_2026_11_09_AGENDA_GUARD_V1','FINANCEIRO_BURGER_2026_11_09_BACKUP_V2','FINANCEIRO_BURGER_2026_11_09_BUSCA_PERIODOS_V1','FINANCEIRO_BURGER_2026_11_09_AGENDA_EXTRATO_V1','FINANCEIRO_BURGER_2026_11_10_ACESSO_V1','FINANCEIRO_BURGER_2026_11_15_VISUAL_V1','FINANCEIRO_BURGER_2026_11_15_VISUAL_V2'].includes(previous))localStorage.removeItem(LS_KEY); localStorage.setItem(LS_VER_KEY,APP_VERSION); } }catch(e){}
 // Não limpa caches antigos a cada abertura; evita trabalho desnecessário no Chrome local.
 // try{ localStorage.removeItem('bdr_data_v1'); }catch(e){}
 // try{ localStorage.removeItem('bdr_data_v2'); }catch(e){}
@@ -2859,12 +2872,12 @@ function rBI(){
 
   $('content').innerHTML=`
     <div class="tb" style="margin-bottom:12px">
-      <span style="font-size:12px;font-weight:600;color:var(--tx2)">Ano:</span>
-      <select id="bi-ano" class="fc" onchange="updBIMes()">${anos.map(a=>`<option value="${a}" ${a===fAno?'selected':''}>${a}</option>`).join('')}</select>
-      <span style="font-size:12px;font-weight:600;color:var(--tx2)">Mês:</span>
-      <select id="bi-mes" class="fc" onchange="rBI()"><option value="">Todos os meses</option>${mesesAno.map(m=>`<option value="${m}" ${fMes===m?'selected':''}>${mesLbl(m)}</option>`).join('')}</select>
-      <span style="font-size:12px;font-weight:600;color:var(--tx2)">Analisar:</span>
-      <select id="bi-tp" class="fc" onchange="rBI()"><option value="pagar" ${fTp==='pagar'?'selected':''}>Saídas</option><option value="receber" ${fTp==='receber'?'selected':''}>Vendas</option></select>
+      <span class="bi-fld"><span style="font-size:12px;font-weight:600;color:var(--tx2)">Ano:</span>
+      <select id="bi-ano" class="fc" onchange="updBIMes()">${anos.map(a=>`<option value="${a}" ${a===fAno?'selected':''}>${a}</option>`).join('')}</select></span>
+      <span class="bi-fld"><span style="font-size:12px;font-weight:600;color:var(--tx2)">Mês:</span>
+      <select id="bi-mes" class="fc" onchange="rBI()"><option value="">Todos os meses</option>${mesesAno.map(m=>`<option value="${m}" ${fMes===m?'selected':''}>${mesLbl(m)}</option>`).join('')}</select></span>
+      <span class="bi-fld"><span style="font-size:12px;font-weight:600;color:var(--tx2)">Analisar:</span>
+      <select id="bi-tp" class="fc" onchange="rBI()"><option value="pagar" ${fTp==='pagar'?'selected':''}>Saídas</option><option value="receber" ${fTp==='receber'?'selected':''}>Vendas</option></select></span>
     </div>
     <div class="kpis">
       <div class="kpi" style="--kc:var(--ok)"><div class="kpi-l">Total Vendas</div><div class="kpi-v">${fmt(tRec)}</div></div>
@@ -5821,7 +5834,7 @@ FinAuth.init().catch(e=>{const m=document.getElementById('fin-auth-message');if(
 </script>
 
 <script type="application/json" id="financeiro-release">{
-  "build": "FINANCEIRO_BURGER_2026_11_15_VISUAL_V2",
+  "build": "FINANCEIRO_BURGER_2026_11_15_VISUAL_V3",
   "base": {
     "url": "https://github.com/marcelomreidogado-cmd/financeiro-burgerdorei/blob/main/index.html",
     "sha256": "92ff98cbf8ff2ca8e97eda290ff0472374ca91fa585b20b820675346d91f6676"
